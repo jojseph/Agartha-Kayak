@@ -1,2 +1,3 @@
 # Agartha Kayak
-
+Agartha Kayak is a community-driven financial transparency tool designed for Barangay Cooperatives. It replaces fragile paper-based record-keeping with an immutable, blockchain-backed "witness" system.
+The dApp serves as a Decentralized Treasury where funds are pooled by neighbors. When a member needs a loan, the request isn't approved by a single person but by a Native Script Multi-sig. Every loan, repayment, and current debt status is recorded as Transaction Metadata, making the cooperative’s financial health visible to every member in real-time. This ensures that no "padrino" can favor certain borrowers and no "utang" is ever conveniently forgotten.
