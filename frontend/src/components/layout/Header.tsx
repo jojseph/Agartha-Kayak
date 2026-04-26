@@ -1,14 +1,58 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 
 export default function Header() {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
+  const pathname = usePathname();
+
+  useEffect(() => {
+    // Apply the scroll effect only on the home page
+    const isHomePage = pathname === "/";
+    if (!isHomePage) {
+      setIsVisible(true);
+      return;
+    }
+
+    let ticking = false;
+
+    const updateNavbar = () => {
+      const currentScrollY = window.scrollY;
+      
+      // Don't hide if mobile menu is open
+      if (isMobileNavOpen) {
+        setIsVisible(true);
+        ticking = false;
+        return;
+      }
+
+      // Only show the header when at the top of the page
+      if (currentScrollY > 50) {
+        setIsVisible(false);
+      } else {
+        setIsVisible(true);
+      }
+      
+      ticking = false;
+    };
+
+    const onScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(updateNavbar);
+        ticking = true;
+      }
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [pathname, isMobileNavOpen]);
 
   return (
-    <header className="h-[126px] px-[8.33%] md:px-10 flex items-center justify-between fixed w-full top-0 bg-background/95 z-[500]">
+    <header className={`h-[126px] px-[8.33%] md:px-10 flex items-center justify-between fixed w-full top-0 bg-background/95 z-[500] transition-transform duration-300 ${isVisible ? "translate-y-0" : "-translate-y-full"}`}>
       {/* Logo */}
       <Link href="/" className="flex-shrink-0">
         <Image
