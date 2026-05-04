@@ -1,10 +1,8 @@
 import React from "react";
-import { Header } from "@/components/layout";
-import { Footer } from "@/components/layout";
 
 /**
  * Marketing route group layout.
- * Wraps public-facing pages with Header + Footer.
+ * Simplified to allow the new landing page to manage its own Header/Footer.
  */
 export default function MarketingLayout({
   children,
@@ -12,10 +10,6 @@ export default function MarketingLayout({
   children: React.ReactNode;
 }) {
   return (
-    <>
-      <Header />
-      <main className="min-h-[calc(100vh-8rem)]">{children}</main>
-      <Footer />
-    </>
+    <main>{children}</main>
   );
 }

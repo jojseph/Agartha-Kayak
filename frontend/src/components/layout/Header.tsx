@@ -69,7 +69,7 @@ export default function Header() {
       <div className="hidden lg:flex items-center gap-20">
         <nav className="flex items-center gap-20 font-tenon font-light text-primary text-[16px] tracking-wide">
           <Link href="#" className="hover:opacity-70 transition-opacity">About</Link>
-          <Link href="#" className="hover:opacity-70 transition-opacity">The Pool</Link>
+          <Link href="/pool" className="hover:opacity-70 transition-opacity">The Pool</Link>
           <Link href="#" className="hover:opacity-70 transition-opacity">How it works</Link>
           <Link href="#" className="hover:opacity-70 transition-opacity">Repay</Link>
         </nav>
