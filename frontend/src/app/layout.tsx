@@ -1,3 +1,4 @@
+import MeshProviderWrapper from '@/components/MeshProviderWrapper';
 import type { Metadata } from "next";
 import { fontSans, fontHeading } from "@/styles/fonts";
 import { Providers } from "@/providers";
@@ -32,9 +33,10 @@ export default function RootLayout({
         <link href="https://use.typekit.net/grm4afc.css" rel="stylesheet" />
       </head>
       <body
-        className={`${fontSans.variable} ${fontHeading.variable} font-sans antialiased`}
-      >
-        <Providers>{children}</Providers>
+        className={`${fontSans.variable} ${fontHeading.variable} font-sans antialiased`}>
+          <MeshProviderWrapper>
+            {children}
+          </MeshProviderWrapper>
       </body>
     </html>
   );

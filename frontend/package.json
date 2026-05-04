@@ -9,6 +9,10 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@blockfrost/blockfrost-js": "^6.1.1",
+    "@meshsdk/core": "^1.9.0-beta.102",
+    "@meshsdk/react": "^2.0.0-beta.2",
+    "@supabase/supabase-js": "^2.105.2",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.14.0",
