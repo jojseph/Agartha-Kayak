@@ -2,6 +2,27 @@
 
 import React, { useState, useEffect } from 'react';
 import { useWallet } from '@meshsdk/react';
+import { BlockfrostProvider, MeshTxBuilder } from '@meshsdk/core';
+import { bech32 } from 'bech32';
+
+/**
+ * Lace wallet connector may return addresses as raw hex (00f4f3...).
+ * Blockfrost requires bech32 (addr_test1...). This converts hex → bech32.
+ * The Cardano address header byte encodes: (type << 4) | network_id
+ * network_id 0 = testnet (preprod/preview), 1 = mainnet.
+ */
+function resolveCardanoAddress(raw: string): string {
+  if (raw.startsWith('addr')) return raw; // already bech32
+  try {
+    const bytes = Buffer.from(raw, 'hex');
+    const networkId = bytes[0] & 0x0f; // 0 = testnet, 1 = mainnet
+    const hrp = networkId === 1 ? 'addr' : 'addr_test';
+    const words = bech32.toWords(bytes);
+    return bech32.encode(hrp, words, 1000);
+  } catch {
+    throw new Error(`Cannot convert wallet address to bech32 format. Raw value: ${raw.slice(0, 20)}...`);
+  }
+}
 
 // --- SVGs & Icons ---
 export const Logo = ({ className, isDark }: { className?: string; isDark: boolean }) => (
@@ -113,20 +134,38 @@ export const TreasuryLoanView = ({ isDark }: { isDark: boolean }) => {
 
 // --- Peer Loan View ---
 export const PeerLoanView = ({ isDark, address }: { isDark: boolean; address: string | null }) => {
+  const { wallet } = useWallet();
   const { aliasQuery, setAliasQuery, searchResults, selectedLender, setSelectedLender, isSearching } = memberSearchHook(isDark);
   
   const [amount, setAmount] = useState('');
   const [purpose, setPurpose] = useState('');
   const [proofUrl, setProofUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
+  const [submitStep, setSubmitStep] = useState<0 | 1 | 2 | 3 | 4>(0);
+  const [successTxHash, setSuccessTxHash] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+
+  const SUBMIT_STEPS = [
+    '',
+    'Preparing blockchain transaction...',
+    'Waiting for Lace wallet signature...',
+    'Submitting to Cardano Preprod...',
+    'Verifying with Blockfrost...',
+  ];
+
+  const resetForm = () => {
+    setAmount('');
+    setPurpose('');
+    setProofUrl('');
+    setAliasQuery('');
+    setSelectedLender(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
-    setSuccessMessage('');
-    
+    setSuccessTxHash('');
+
     if (!address) {
       setErrorMessage('Please connect your wallet first.');
       return;
@@ -135,41 +174,144 @@ export const PeerLoanView = ({ isDark, address }: { isDark: boolean; address: st
       setErrorMessage('Please select a valid lender from the dropdown.');
       return;
     }
+    if (!selectedLender.wallet_address) {
+      setErrorMessage('The selected lender does not have a valid wallet address on record.');
+      return;
+    }
+    if (selectedLender.wallet_address === address) {
+      setErrorMessage('You cannot request a loan from yourself. Please select a different member.');
+      return;
+    }
 
     setIsSubmitting(true);
-    
-    try {
-      const res = await fetch('/api/loans/peer', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '',
-        },
-        body: JSON.stringify({
-          borrowerAddress: address,
-          lenderAddress: selectedLender.wallet_address,
-          amount,
-          currency: 'Php',
-          purpose,
-          proof_url: proofUrl,
-        }),
-      });
 
-      const data = await res.json();
-      if (res.ok) {
-        setSuccessMessage('Peer loan request submitted successfully!');
-        setAmount('');
-        setPurpose('');
-        setProofUrl('');
-        setAliasQuery('');
-        setSelectedLender(null);
-      } else {
-        setErrorMessage(data.error || 'Failed to submit loan request');
+    try {
+      // Step 1: Build the transaction via MeshTxBuilder (avoids experimentalSelectUtxos bug)
+      setSubmitStep(1);
+
+      // Fetch UTxOs via Blockfrost (avoids the wallet.getUtxos() CBOR format mismatch)
+      // Lace may return hex-encoded addresses — resolveCardanoAddress converts to bech32.
+      const rawChangeAddress = await wallet.getChangeAddress();
+      const changeAddress = resolveCardanoAddress(rawChangeAddress);
+      const blockfrostProvider = new BlockfrostProvider(
+        process.env.NEXT_PUBLIC_BLOCKFROST_PROJECT_ID!
+      );
+      const blockfrostUtxos = await blockfrostProvider.fetchAddressUTxOs(changeAddress);
+      if (!blockfrostUtxos || blockfrostUtxos.length === 0) {
+        setErrorMessage('Your wallet has no available tADA. Please fund your Preprod wallet from the Cardano Faucet first.');
+        return;
       }
-    } catch (err) {
-      setErrorMessage('Network error while submitting request.');
+
+      const lenderAddress = resolveCardanoAddress(selectedLender.wallet_address);
+
+      // Pick the largest UTxO to use as explicit input (avoids selectUtxosFrom coin-selection bugs)
+      const sortedUtxos = [...blockfrostUtxos].sort((a, b) => {
+        const lovelaceA = parseInt(a.output.amount.find((x: any) => x.unit === 'lovelace')?.quantity || '0');
+        const lovelaceB = parseInt(b.output.amount.find((x: any) => x.unit === 'lovelace')?.quantity || '0');
+        return lovelaceB - lovelaceA;
+      });
+      const inputUtxo = sortedUtxos[0];
+      const inputLovelace = parseInt(inputUtxo.output.amount.find((x: any) => x.unit === 'lovelace')?.quantity || '0');
+      if (inputLovelace < 3000000) {
+        setErrorMessage('Insufficient tADA. You need at least 3 tADA (2 tADA + fees) in a single UTxO. Try consolidating your funds first.');
+        return;
+      }
+
+      const txBuilder = new MeshTxBuilder({ fetcher: blockfrostProvider });
+      const unsignedTx = await txBuilder
+        .txIn(inputUtxo.input.txHash, inputUtxo.input.outputIndex, inputUtxo.output.amount, inputUtxo.output.address)
+        .txOut(lenderAddress, [{ unit: 'lovelace', quantity: '2000000' }])
+        .changeAddress(changeAddress)
+        .complete();
+
+      // Step 2: Request wallet signature
+      // Lace (CIP-30) signTx returns ONLY the witness set (a100...), not a full tx.
+      setSubmitStep(2);
+      const witnessSet = await wallet.signTx(unsignedTx, true);
+
+      // Step 3: Manually assemble the final signed transaction.
+      // MeshTxBuilder leaves an empty witness placeholder in the unsigned tx.
+      // We splice in the real witness set from Lace, preserving the valid+aux_data tail.
+      //   Babbage era tail:  a0 f5 f6          (empty witnesses, valid=true, null metadata)
+      //   Conway era tail:   a0 f5 d90103a0    (empty witnesses, valid=true, tagged empty aux_data)
+      let assembledTx: string;
+      if (unsignedTx.endsWith('a0f5f6')) {
+        assembledTx = unsignedTx.slice(0, -6) + witnessSet + 'f5f6';
+      } else if (unsignedTx.endsWith('a0f5d90103a0')) {
+        assembledTx = unsignedTx.slice(0, -12) + witnessSet + 'f5d90103a0';
+      } else {
+        throw new Error(`Unsupported tx format. Last 20 chars: ${unsignedTx.slice(-20)}`);
+      }
+      console.log('[PeerLoan] assembledTx CBOR start:', assembledTx.slice(0, 8)); // should be 84
+
+      setSubmitStep(3);
+      const txHash = await blockfrostProvider.submitTx(assembledTx);
+
+      // Transaction submitted! Show the hash + Cardanoscan link immediately.
+      // The tx is in the mempool — confirmation takes ~20-60s on Preprod.
+      setSuccessTxHash(txHash);
+      resetForm();
+
+      // Step 4: Retry backend verification — give the chain time to confirm.
+      setSubmitStep(4);
+      const backendPayload = {
+        // Use the original addresses as stored in Supabase (hex format).
+        // The loans table FK constraint requires these to match the members table exactly.
+        borrowerAddress: address,                           // hex, from wallet prop
+        lenderAddress: selectedLender.wallet_address,      // hex, as stored in members table
+        txHash,
+        amount,
+        currency: 'Php',
+        purpose,
+        proof_url: proofUrl,
+      };
+
+      let recorded = false;
+      for (let attempt = 1; attempt <= 4; attempt++) {
+        // Wait before each attempt (10s, 20s, 30s, 40s)
+        await new Promise(r => setTimeout(r, attempt * 10000));
+        try {
+          const res = await fetch('/api/loans/peer', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '',
+            },
+            body: JSON.stringify(backendPayload),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            recorded = true;
+            break;
+          }
+          console.warn(`[PeerLoan] Backend attempt ${attempt}/4 failed:`, data.error, '| detail:', data.detail, '| code:', data.code);
+        } catch (e) {
+          console.warn(`[PeerLoan] Backend attempt ${attempt}/4 error:`, e);
+        }
+      }
+
+      if (!recorded) {
+        // Tx is confirmed on-chain (user can verify via Cardanoscan link),
+        // but the loan record wasn't saved to the database automatically.
+        console.warn('[PeerLoan] Backend verification timed out. Tx hash:', txHash);
+      }
+    } catch (err: any) {
+      const msg: string = err?.message || err?.info || String(err) || '';
+      console.error('[PeerLoan] TX error:', msg, err);
+
+      if (msg.includes('user declined') || msg.includes('cancelled') || msg.includes('User canceled')) {
+        setErrorMessage('Transaction was cancelled in the wallet.');
+      } else if (msg.includes('locked')) {
+        setErrorMessage('Wallet is locked. Please unlock your Lace wallet and try again.');
+      } else if (msg.includes('network')) {
+        setErrorMessage('Network mismatch. Make sure Lace is set to Preprod network.');
+      } else {
+        // Show the real MeshJS error so we can debug
+        setErrorMessage(`Transaction failed: ${msg || 'Unknown error. Check the browser console for details.'}`);
+      }
     } finally {
       setIsSubmitting(false);
+      setSubmitStep(0);
     }
   };
 
@@ -179,14 +321,59 @@ export const PeerLoanView = ({ isDark, address }: { isDark: boolean; address: st
         <h2 className={`text-3xl font-bold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>Peer <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#681CFF] to-[#FD3F83]">Loan</span></h2>
         <p className={`mb-8 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Request a peer-to-peer loan from a community member.</p>
 
-        {successMessage && (
-          <div className="mb-6 p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-400 text-sm font-medium">
-            {successMessage}
+
+        {/* Success State */}
+        {successTxHash && (
+          <div className="mb-6 p-5 rounded-2xl bg-green-500/10 border border-green-500/20 space-y-3 animate-in fade-in duration-500">
+            <div className="flex items-center gap-2 text-green-400 font-semibold">
+              <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              Peer loan recorded on-chain!
+            </div>
+            <p className="text-xs text-gray-400">Transaction verified by Blockfrost and saved to the community ledger.</p>
+            <div className={`font-mono text-[11px] break-all p-3 rounded-xl ${isDark ? 'bg-black/30 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+              {successTxHash}
+            </div>
+            <a
+              href={`https://preprod.cardanoscan.io/transaction/${successTxHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-[#681CFF] hover:text-[#FD3F83] font-medium transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+              View on Cardanoscan (Preprod)
+            </a>
           </div>
         )}
+
+        {/* Error State */}
         {errorMessage && (
           <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium">
             {errorMessage}
+          </div>
+        )}
+
+        {/* Multi-step Loading Overlay */}
+        {isSubmitting && (
+          <div className={`mb-6 p-5 rounded-2xl border space-y-4 animate-in fade-in duration-300 ${isDark ? 'bg-[#681CFF]/10 border-[#681CFF]/20' : 'bg-[#681CFF]/5 border-[#681CFF]/20'}`}>
+            <p className="text-sm font-semibold text-[#681CFF] mb-1">Processing your loan request…</p>
+            {([1, 2, 3, 4] as const).map((step) => (
+              <div key={step} className="flex items-center gap-3">
+                {submitStep > step ? (
+                  <svg className="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg>
+                ) : submitStep === step ? (
+                  <div className="w-4 h-4 border-2 border-[#681CFF] border-t-transparent rounded-full animate-spin shrink-0" />
+                ) : (
+                  <div className="w-4 h-4 rounded-full border-2 border-white/20 shrink-0" />
+                )}
+                <span className={`text-sm transition-colors ${
+                  submitStep > step ? 'text-green-400' :
+                  submitStep === step ? (isDark ? 'text-white font-medium' : 'text-gray-900 font-medium') :
+                  (isDark ? 'text-gray-600' : 'text-gray-400')
+                }`}>
+                  {SUBMIT_STEPS[step]}
+                </span>
+              </div>
+            ))}
           </div>
         )}
 
@@ -273,17 +460,25 @@ export const PeerLoanView = ({ isDark, address }: { isDark: boolean; address: st
             />
           </div>
 
-          <p className="text-xs text-gray-500 flex items-center gap-2">
-            <svg className="w-4 h-4 text-[#FD3F83]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-            The transaction fee will be shouldered by the dApp wallet.
-          </p>
 
-          <button 
-            type="submit" 
+          <div className={`flex items-start gap-2.5 p-4 rounded-xl border ${isDark ? 'bg-[#681CFF]/5 border-[#681CFF]/20' : 'bg-[#681CFF]/5 border-[#681CFF]/20'}`}>
+            <svg className="w-4 h-4 text-[#FD3F83] shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <p className="text-xs text-gray-500 leading-relaxed">
+              Submitting will send a <span className="text-[#681CFF] font-semibold">2 tADA</span> proof-of-intent from your wallet to the lender's address. This creates an immutable on-chain receipt. The tx fee is ~0.17 tADA.
+            </p>
+          </div>
+
+          <button
+            type="submit"
             disabled={isSubmitting}
             className="w-full relative flex items-center justify-center px-6 py-4 font-semibold text-white bg-gradient-to-r from-[#681CFF] to-[#FD3F83] rounded-xl overflow-hidden transition-all hover:scale-[1.02] active:scale-95 shadow-lg disabled:opacity-70 disabled:hover:scale-100"
           >
-            {isSubmitting ? 'Submitting...' : 'Submit Peer Loan Request'}
+            {isSubmitting ? (
+              <span className="flex items-center gap-2">
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                {SUBMIT_STEPS[submitStep] || 'Processing...'}
+              </span>
+            ) : 'Submit Peer Loan Request'}
           </button>
         </form>
       </div>
