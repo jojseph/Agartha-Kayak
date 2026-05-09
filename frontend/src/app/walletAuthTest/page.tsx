@@ -2,274 +2,309 @@
 
 import React, { useState, useEffect } from 'react';
 import ConnectionSuccess from '@/components/ConnectionSuccess';
-import NetworkSelectModal from '@/components/NetworkSelectModal';
 import { useWallet } from '@meshsdk/react';
 import { useRouter } from 'next/navigation';
-import { Logo } from '@/components/pool/DashboardComponents';
 
 export default function WalletAuthTestPage() {
-    const { connected, wallet, connect, disconnect } = useWallet();
-    const router = useRouter();
+  const { connected, wallet, connect, disconnect } = useWallet();
+  const router = useRouter();
+  
+  // State Machine: controls what the user sees
+  const [appState, setAppState] = useState<'disconnected' | 'checking' | 'needs_alias' | 'authenticated'>('disconnected');
+  
+  const [address, setAddress] = useState<string | null>(null);
+  const [alias, setAlias] = useState('');
+  const [memberData, setMemberData] = useState<any>(null);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const [session, setSession] = useState('');
+
+  useEffect(() => {
+    setSession(`agartha-kayak-${Date.now().toString(36)}`);
+  }, []);
+
+  // 1. Listen for Wallet Connection
+  useEffect(() => {
+    if (connected) {
+      wallet.getUsedAddresses().then((addrs) => {
+        const currentAddress = addrs[0];
+        setAddress(currentAddress);
+        checkLedger(currentAddress);
+      }).catch((err) => {
+        setErrorMessage("Failed to read wallet address.");
+      });
+    } else {
+      // Reset everything if disconnected
+      setAppState('disconnected');
+      setAddress(null);
+      setMemberData(null);
+      setAlias('');
+      setErrorMessage('');
+    }
+  }, [connected, wallet]);
+
+  // 2. Check Database (The "Login" part)
+  const checkLedger = async (walletAddr: string) => {
+    setAppState('checking');
+    setErrorMessage('');
     
-    // State Machine: controls what the user sees
-    const [appState, setAppState] = useState<'disconnected' | 'checking' | 'needs_alias' | 'authenticated'>('disconnected');
-    
-    const [address, setAddress] = useState<string | null>(null);
-    const [alias, setAlias] = useState('');
-    const [memberData, setMemberData] = useState<any>(null);
-    const [errorMessage, setErrorMessage] = useState('');
-    const [isDark, setIsDark] = useState(true);
-    const [showNetworkModal, setShowNetworkModal] = useState(false);
-    const [selectedNetwork, setSelectedNetwork] = useState<{ blockchain: string; environment: string } | null>(null);
+    try {
+      const res = await fetch('/api/members', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '',
+        },
+        body: JSON.stringify({ walletAddress: walletAddr }),
+      });
+      const data = await res.json();
+      
+      if (data.exists) {
+        setMemberData(data.member);
+        setAppState('authenticated'); // Found them! Show dashboard.
+        router.push(`/dashboardTest?alias=${encodeURIComponent(data.member.alias)}`);
+      } else {
+        setAppState('needs_alias'); // Not found. Prompt for alias.
+      }
+    } catch (err) {
+      setErrorMessage("Failed to check the Bayanihan Ledger.");
+      disconnect();
+    }
+  };
 
-    // 1. Listen for Wallet Connection
-    useEffect(() => {
-        if (connected) {
-        wallet.getUsedAddresses().then((addrs) => {
-            const currentAddress = addrs[0];
-            setAddress(currentAddress);
-            checkLedger(currentAddress);
-        }).catch((err) => {
-            setErrorMessage("Failed to read wallet address.");
-        });
-        } else {
-        // Reset everything if disconnected
-        setAppState('disconnected');
-        setAddress(null);
-        setMemberData(null);
-        setAlias('');
-        setErrorMessage('');
-        }
-    }, [connected, wallet]);
+  // 3. Register New Member
+  const registerMember = async () => {
+    if (!alias.trim()) {
+      setErrorMessage("Paki-butang og alias, bai!");
+      return;
+    }
 
-    // 2. Check Database (The "Login" part)
-    const checkLedger = async (walletAddr: string) => {
-        setAppState('checking');
-        setErrorMessage('');
-        
-        try {
-        const res = await fetch('/api/members', {
-            method: 'POST',
-            headers: {
-            'Content-Type': 'application/json',
-            'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '',
-            },
-            body: JSON.stringify({ walletAddress: walletAddr }),
-        });
-        const data = await res.json();
-        
-        if (data.exists) {
-            setMemberData(data.member);
-            setAppState('authenticated'); // Found them! Show dashboard.
-            router.push(`/dashboardTest?alias=${encodeURIComponent(data.member.alias)}`);
-        } else {
-            setAppState('needs_alias'); // Not found. Prompt for alias.
-        }
-        } catch (err) {
-        setErrorMessage("Failed to check the Bayanihan Ledger.");
-        disconnect();
-        }
-    };
+    setAppState('checking'); // Show loading state
+    setErrorMessage('');
 
-    // 3. Register New Member
-    const registerMember = async () => {
-        if (!alias.trim()) {
-        setErrorMessage("Paki-butang og alias, bai!");
-        return;
-        }
+    try {
+      const res = await fetch('/api/members/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '',
+        },
+        body: JSON.stringify({ walletAddress: address, alias }),
+      });
 
-        setAppState('checking'); // Show loading state
-        setErrorMessage('');
-
-        try {
-        const res = await fetch('/api/members/register', {
-            method: 'POST',
-            headers: {
-            'Content-Type': 'application/json',
-            'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '',
-            },
-            body: JSON.stringify({ walletAddress: address, alias }),
-        });
-
-        if (res.ok) {
-            // Automatically check ledger again to fetch their new 50 Trust Score
-            checkLedger(address!); 
-        } else {
-            setErrorMessage("Failed to register. Please try again.");
-            setAppState('needs_alias');
-        }
-        } catch (err) {
-        setErrorMessage("Network error during registration.");
+      if (res.ok) {
+        // Automatically check ledger again to fetch their new 50 Trust Score
+        checkLedger(address!); 
+      } else {
+        setErrorMessage("Failed to register. Please try again.");
         setAppState('needs_alias');
+      }
+    } catch (err) {
+      setErrorMessage("Network error during registration.");
+      setAppState('needs_alias');
+    }
+  };
+
+  const handleConnectLace = async () => {
+    setErrorMessage('');
+    try {
+      await connect('lace');
+    } catch (error) {
+      setErrorMessage("Connection failed. Is Lace installed and unlocked?");
+    }
+  };
+
+  const handleClose = () => {
+    router.push('/');
+  };
+
+  const qrData = `lace://connect?session=${session}`;
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qrData)}&ecc=H`;
+
+  return (
+    <div className="min-h-screen w-full bg-[#FAFAFA] text-[#0A0A0A] flex items-center justify-center p-4 sm:p-8 font-sans antialiased">
+      <style>{`
+        @keyframes cardIn {
+          from { opacity: 0; transform: translateY(8px) scale(0.985); }
+          to   { opacity: 1; transform: translateY(0)  scale(1); }
         }
-    };
-
-    // 4. Open network selector, then connect
-    const handleConnectClick = () => {
-        setErrorMessage('');
-        setShowNetworkModal(true);
-    };
-
-    const handleNetworkConfirm = async (selection: { blockchain: string; environment: string }) => {
-        setShowNetworkModal(false);
-        setSelectedNetwork(selection);
-        setErrorMessage('');
-        try {
-            await connect('lace'); // lowercase 'lace' is required by MeshJS
-        } catch (error) {
-            setErrorMessage("Connection failed. Is Lace installed and unlocked?");
+        .animate-card-in {
+          animation: cardIn 0.45s ease-out both;
         }
-    };
+      `}</style>
 
-    return (
-        <main className={`min-h-screen font-sans overflow-hidden transition-colors duration-300 flex items-center justify-center relative ${isDark ? 'bg-[#05050A] text-white selection:bg-[#FD3F83] selection:text-white' : 'bg-[#FFFDFB] text-gray-900 selection:bg-[#681CFF] selection:text-white'}`}>
-            {/* Network Select Modal */}
-            {showNetworkModal && (
-                <NetworkSelectModal
-                    isDark={isDark}
-                    onConfirm={handleNetworkConfirm}
-                    onClose={() => setShowNetworkModal(false)}
-                />
-            )}
-            
-            {/* Background Animated Gradient */}
-            <div className="absolute inset-0 z-[0] overflow-hidden pointer-events-none transition-opacity duration-500">
-                {isDark ? (
-                <>
-                    <div className="absolute top-[-10%] left-[-10%] w-[120%] h-[120%] bg-gradient-to-br from-[#10072E] via-[#05050A] to-[#1F0839] animate-[pulse_10s_ease-in-out_infinite]"></div>
-                    <div className="absolute top-[20%] left-[20%] w-[60%] h-[60%] rounded-full bg-[#681CFF] opacity-[0.15] blur-[100px] animate-[ping_8s_cubic-bezier(0,0,0.2,1)_infinite]"></div>
-                    <div className="absolute bottom-[10%] right-[10%] w-[40%] h-[40%] rounded-full bg-[#FD3F83] opacity-[0.15] blur-[120px]"></div>
-                </>
-                ) : (
-                <>
-                    <div className="absolute top-[-10%] left-[-10%] w-[120%] h-[120%] bg-gradient-to-br from-[#F3E8FF] via-[#FFFDFB] to-[#FCE7F3] animate-[pulse_10s_ease-in-out_infinite]"></div>
-                    <div className="absolute top-[20%] left-[20%] w-[60%] h-[60%] rounded-full bg-[#681CFF] opacity-[0.05] blur-[100px] animate-[ping_8s_cubic-bezier(0,0,0.2,1)_infinite]"></div>
-                    <div className="absolute bottom-[10%] right-[10%] w-[40%] h-[40%] rounded-full bg-[#FD3F83] opacity-[0.05] blur-[120px]"></div>
-                </>
-                )}
-            </div>
+      <div className="w-full max-w-[440px] bg-white rounded-[24px] px-9 pt-10 pb-8 relative shadow-[0_1px_2px_rgba(16,24,40,0.04),0_24px_48px_-16px_rgba(16,24,40,0.10)] animate-card-in">
+        
+        {/* Close Button */}
+        <button
+          onClick={handleClose}
+          type="button"
+          aria-label="Close"
+          className="absolute top-[18px] right-[18px] w-8 h-8 rounded-full bg-[#F3F3F1] text-[#6B7280] flex items-center justify-center transition-colors duration-150 ease-in hover:bg-[#E5E5E2] hover:text-[#0A0A0A]"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="w-3.5 h-3.5"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
 
-            {/* Header / Nav */}
-            <header className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-6 lg:px-12">
-                <button onClick={() => router.push('/')} className="hover:opacity-80 transition-opacity">
-                    <Logo isDark={isDark} />
-                </button>
-                <button 
-                    onClick={() => setIsDark(!isDark)} 
-                    className={`p-2 rounded-full transition-colors ${isDark ? 'text-gray-400 hover:bg-white/10 hover:text-white' : 'text-gray-500 hover:bg-gray-200 hover:text-gray-900'}`}
-                >
-                    {isDark ? (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                    ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
-                    )}
-                </button>
-            </header>
+        {errorMessage && (
+          <div className="mb-6 p-4 text-sm text-red-500 bg-red-50 border border-red-100 rounded-xl text-center">
+            {errorMessage}
+          </div>
+        )}
 
-            {/* Auth Container */}
-            <div className={`relative z-10 w-full max-w-md p-8 md:p-10 rounded-3xl backdrop-blur-xl border shadow-2xl transition-all duration-300 ${isDark ? 'bg-[#10072E]/40 border-white/10 shadow-[#681CFF]/10' : 'bg-white/80 border-gray-200 shadow-[#681CFF]/5'}`}>
+        {appState === 'disconnected' && (
+          <>
+            <h1 className="text-[22px] font-bold tracking-tight text-center text-[#0A0A0A]">
+              Connect Wallet
+            </h1>
+            <p className="mt-2.5 text-[13px] leading-[1.55] text-[#6B7280] text-center">
+              By connecting your wallet, you agree to our{' '}
+              <a href="#" className="text-blue-600 font-medium no-underline hover:underline">
+                Terms of Service
+              </a>{' '}
+              and our{' '}
+              <a href="#" className="text-blue-600 font-medium no-underline hover:underline">
+                Privacy Policy
+              </a>.
+            </p>
+
+            {/* Wallets List */}
+            <div className="mt-6 flex flex-col gap-2.5">
+              <button
+                onClick={handleConnectLace}
+                type="button"
+                className="group relative flex items-center gap-3.5 w-full py-3.5 px-5 bg-[#F5F5F4] border border-transparent rounded-[14px] cursor-pointer transition-all duration-150 ease-in text-left overflow-hidden hover:bg-[#EFEFEC] hover:border-[#E5E5E2] active:scale-[0.995]"
+              >
+                <div className="absolute left-0 top-2 bottom-2 w-[3px] rounded-sm bg-blue-600 opacity-0 -translate-x-[3px] transition-all duration-150 ease-in group-hover:opacity-100 group-hover:translate-x-0" />
                 
-                {/* Header inside Card */}
-                <div className={`text-center mb-8 pb-6 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                    <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-[#681CFF] to-[#FD3F83]">Agartha Kayak Vault</h1>
-                    <p className={`text-xs uppercase tracking-widest mt-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Secure Authentication</p>
-                </div>
-
-                {/* Global Error Message */}
-                {errorMessage && (
-                    <div className="mb-6 p-4 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl text-center animate-pulse">
-                        {errorMessage}
-                    </div>
-                )}
-
-                {/* STATE: Disconnected */}
-                {appState === 'disconnected' && (
-                    <div className="space-y-6 text-center animate-in fade-in zoom-in-95 duration-500">
-                        <p className={`text-sm leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                            Welcome to the Digital Bayanihan Ledger. Connect your Web3 wallet to safely access the community vault.
-                        </p>
-
-                        {/* Selected network badge */}
-                        {selectedNetwork && (
-                            <div className={`flex items-center justify-center gap-2 px-4 py-2 rounded-full text-xs font-semibold border ${isDark ? 'bg-[#681CFF]/10 border-[#681CFF]/30 text-[#A78BFF]' : 'bg-[#681CFF]/5 border-[#681CFF]/20 text-[#681CFF]'}`}>
-                                <span className="w-2 h-2 rounded-full bg-gradient-to-r from-[#681CFF] to-[#FD3F83] inline-block"></span>
-                                {selectedNetwork.blockchain} · {selectedNetwork.environment}
-                            </div>
-                        )}
-
-                        <button 
-                            onClick={handleConnectClick}
-                            className="w-full py-4 bg-gradient-to-r from-[#681CFF] to-[#FD3F83] text-white rounded-full font-bold transition-all hover:scale-105 shadow-lg shadow-[#FD3F83]/20"
-                        >
-                            {selectedNetwork ? 'Retry Connection' : 'Connect Lace Wallet'}
-                        </button>
-                        <div className={`pt-4 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                            No wallet? <a href="https://lace.io" target="_blank" rel="noopener noreferrer" className="text-[#FD3F83] hover:underline font-medium">Get Lace here</a>
-                        </div>
-                    </div>
-                )}
-
-                {/* STATE: Checking/Loading */}
-                {appState === 'checking' && (
-                    <div className="py-8 flex flex-col items-center justify-center space-y-6 animate-in fade-in duration-500">
-                        <div className="w-12 h-12 border-4 border-[#681CFF] border-t-[#FD3F83] rounded-full animate-spin"></div>
-                        <p className={`text-sm animate-pulse ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Syncing with secure ledger...</p>
-                    </div>
-                )}
-
-                {/* STATE: Needs Alias (Registration Prompt) */}
-                {appState === 'needs_alias' && (
-                    <div className="space-y-6 animate-in slide-in-from-right-4 fade-in duration-500">
-                        <div className={`p-5 rounded-2xl border ${isDark ? 'bg-[#681CFF]/10 border-[#681CFF]/20' : 'bg-[#681CFF]/5 border-[#681CFF]/20'}`}>
-                            <p className="text-sm font-semibold text-[#681CFF] mb-1">
-                                We noticed you're new here! 
-                            </p>
-                            <p className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                                Your wallet is connected, but we need an alias to identify you securely in the community.
-                            </p>
-                        </div>
-
-                        <div className="space-y-3">
-                            <label className={`text-xs font-bold uppercase ml-1 tracking-wider ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Your Community Alias</label>
-                            <input 
-                                type="text"
-                                placeholder="e.g., Lando"
-                                value={alias}
-                                onChange={(e) => setAlias(e.target.value)}
-                                className={`w-full p-4 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#681CFF]/50 transition-all ${isDark ? 'bg-[#05050A]/50 border-white/10 text-white placeholder-gray-600' : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400'}`}
-                                onKeyDown={(e) => e.key === 'Enter' && registerMember()}
-                            />
-                        </div>
-
-                        <div className="space-y-3 pt-2">
-                            <button 
-                                onClick={registerMember}
-                                className="w-full py-4 bg-gradient-to-r from-[#681CFF] to-[#FD3F83] text-white rounded-full font-bold transition-all hover:scale-105 shadow-lg shadow-[#FD3F83]/20"
-                            >
-                                Complete Registration
-                            </button>
-                            
-                            <button 
-                                onClick={() => disconnect()}
-                                className={`w-full py-3 text-xs font-medium transition-colors rounded-full ${isDark ? 'text-gray-400 hover:text-white hover:bg-white/5' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}
-                            >
-                                Cancel & Disconnect
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* STATE: Authenticated (Dashboard) */}
-                {appState === 'authenticated' && memberData && (
-                    <div className="animate-in fade-in duration-500">
-                        <ConnectionSuccess 
-                            memberData={memberData} 
-                            address={address} 
-                            onDisconnect={disconnect} 
-                        />
-                    </div>
-                )}
+                <img
+                  src="https://cardano.org/img/app-icons/lace.jpg"
+                  alt="Lace wallet logo"
+                  className="w-9 h-9 rounded-lg object-cover shrink-0 bg-gradient-to-br from-[#FF8A4C] via-[#E73C7E] to-[#4F8DFF]"
+                  onError={(e) => {
+                    e.currentTarget.style.background = 'linear-gradient(135deg, #FF8A4C 0%, #E73C7E 50%, #4F8DFF 100%)';
+                    e.currentTarget.src = ''; 
+                  }}
+                />
+                <span className="text-[15px] font-semibold flex-1 text-[#0A0A0A]">
+                  Lace
+                </span>
+                <span className="text-[14px] font-semibold text-blue-600 opacity-0 translate-x-1 transition-all duration-150 ease-in pointer-events-none group-hover:opacity-100 group-hover:translate-x-0">
+                  Connect
+                </span>
+              </button>
             </div>
-        </main>
-    );
+
+            {/* Divider */}
+            <div className="flex items-center gap-3 my-7 text-[#9CA3AF] text-xs font-medium uppercase tracking-[0.08em] before:flex-1 before:h-[1px] before:bg-[#E5E5E2] after:flex-1 after:h-[1px] after:bg-[#E5E5E2]">
+              or scan with mobile
+            </div>
+
+            {/* QR Code Section */}
+            <div className="flex justify-center">
+              <div className="relative w-[200px] h-[200px] p-3 bg-white rounded-2xl border border-[#EFEFED] shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                <img 
+                  src={qrCodeUrl} 
+                  alt="QR Code" 
+                  className="w-full h-full block"
+                />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[42px] h-[42px] rounded-lg bg-white p-1 shadow-[0_1px_4px_rgba(0,0,0,0.08)] flex items-center justify-center">
+                  <img
+                    src="https://cardano.org/img/app-icons/lace.jpg"
+                    alt="Lace"
+                    className="w-full h-full object-cover rounded-[5px] bg-gradient-to-br from-[#FF8A4C] via-[#E73C7E] to-[#4F8DFF]"
+                    onError={(e) => e.currentTarget.removeAttribute('src')}
+                  />
+                </div>
+              </div>
+            </div>
+            <p className="mt-3.5 text-center text-[13px] text-[#6B7280] leading-[1.5]">
+              Scan with Lace mobile wallet
+            </p>
+
+            {/* Footer */}
+            <div className="mt-6 pt-5 border-t border-[#F0F0EE] text-center">
+              <p className="text-[13px] font-medium text-[#6B7280]">
+                Don't have Lace?{' '}
+                <a
+                  href="https://www.lace.io/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 font-semibold no-underline hover:underline"
+                >
+                  Get it &rarr;
+                </a>
+              </p>
+            </div>
+          </>
+        )}
+
+        {appState === 'checking' && (
+          <div className="py-12 flex flex-col items-center justify-center space-y-6">
+            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-[15px] font-medium text-[#6B7280]">Syncing with ledger...</p>
+          </div>
+        )}
+
+        {appState === 'needs_alias' && (
+          <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="text-center">
+              <h1 className="text-[22px] font-bold tracking-tight text-[#0A0A0A]">
+                Welcome!
+              </h1>
+              <p className="mt-2.5 text-[13px] leading-[1.55] text-[#6B7280]">
+                Your wallet is connected, but we need an alias to identify you securely in the community.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-[13px] font-bold uppercase tracking-wider text-[#6B7280]">Your Community Alias</label>
+              <input 
+                type="text"
+                placeholder="e.g., Lando"
+                value={alias}
+                onChange={(e) => setAlias(e.target.value)}
+                className="w-full p-3.5 rounded-[14px] border border-[#E5E5E2] bg-[#F5F5F4] text-[#0A0A0A] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-blue-600/50 focus:border-blue-600 transition-all"
+                onKeyDown={(e) => e.key === 'Enter' && registerMember()}
+              />
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <button 
+                onClick={registerMember}
+                className="w-full py-3.5 bg-blue-600 text-white rounded-[14px] font-semibold transition-all hover:bg-blue-700 active:scale-[0.995]"
+              >
+                Complete Registration
+              </button>
+              
+              <button 
+                onClick={() => disconnect()}
+                className="w-full py-3.5 text-[#6B7280] bg-transparent font-medium transition-colors rounded-[14px] hover:text-[#0A0A0A] hover:bg-[#F5F5F4]"
+              >
+                Cancel & Disconnect
+              </button>
+            </div>
+          </div>
+        )}
+
+        {appState === 'authenticated' && memberData && (
+          <div className="animate-in fade-in duration-500">
+            <ConnectionSuccess />
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
 }
