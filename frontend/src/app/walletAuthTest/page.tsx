@@ -18,9 +18,17 @@ export default function WalletAuthTestPage() {
 
   // Form states for the new onboarding UI
   const [formState, setFormState] = useState<'idle' | 'animating' | 'success'>('idle');
+  const [communities, setCommunities] = useState<any[]>([]);
 
   useEffect(() => {
     setSession(`agartha-kayak-${Date.now().toString(36)}`);
+    
+    fetch('/api/communities')
+      .then(res => res.json())
+      .then(data => {
+        if (data.communities) setCommunities(data.communities);
+      })
+      .catch(err => console.error('Failed to fetch communities', err));
   }, []);
 
   useEffect(() => {
@@ -69,7 +77,7 @@ export default function WalletAuthTestPage() {
     }
   };
 
-  const registerMember = async (alias: string, barangay: string) => {
+  const registerMember = async (alias: string, communityId: string, barangay: string) => {
     setErrorMessage('');
 
     try {
@@ -79,7 +87,7 @@ export default function WalletAuthTestPage() {
           'Content-Type': 'application/json',
           'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '',
         },
-        body: JSON.stringify({ walletAddress: address, alias, barangay }),
+        body: JSON.stringify({ walletAddress: address, alias, communityId, barangay }),
       });
 
       if (res.ok) {
@@ -112,9 +120,11 @@ export default function WalletAuthTestPage() {
 
     const formData = new FormData(form);
     const fullName = formData.get('full-name') as string;
-    const barangay = formData.get('barangay') as string;
+    const communityId = formData.get('barangay') as string;
+    const selectEl = form.elements.namedItem('barangay') as HTMLSelectElement;
+    const barangayName = selectEl.options[selectEl.selectedIndex].text;
     
-    registerMember(fullName, barangay);
+    registerMember(fullName, communityId, barangayName);
   };
 
   const handleBack = () => {
@@ -231,15 +241,11 @@ export default function WalletAuthTestPage() {
                     }}
                   >
                     <option value="" disabled>Select your barangay…</option>
-                    <option>Barangay San Roque</option>
-                    <option>Barangay Bagong Silang</option>
-                    <option>Barangay Mabuhay</option>
-                    <option>Barangay Pag-asa</option>
-                    <option>Barangay Maligaya</option>
-                    <option>Barangay Santa Cruz</option>
-                    <option>Barangay Bayanihan</option>
-                    <option>Barangay Magsaysay</option>
-                    <option>Other / Not listed</option>
+                    {communities.map((c) => (
+                      <option key={c.community_id} value={c.community_id}>
+                        {c.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

@@ -10,40 +10,11 @@ export async function POST(request: Request) {
     }
     
     try {
-        const { walletAddress, alias, barangay } = await request.json();
+        const { walletAddress, alias, communityId, barangay } = await request.json();
 
         // Validate inputs
-        if (!walletAddress || !alias) {
-            return NextResponse.json({ error: 'Wallet address and alias are required' }, { status: 400 });
-        }
-
-        // Auto-assign to a default community (create if doesn't exist)
-        let communityId = null;
-        const defaultCommunityName = 'Consolacion Cooperative';
-        const defaultTreasuryAddress = 'addr_test1placeholder_treasury'; // Replace with real one if needed
-
-        const { data: existingCommunity, error: communityError } = await supabaseAdmin
-            .from('communities')
-            .select('community_id')
-            .eq('name', defaultCommunityName)
-            .single();
-
-        if (existingCommunity) {
-            communityId = existingCommunity.community_id;
-        } else {
-            const { data: newCommunity, error: createError } = await supabaseAdmin
-                .from('communities')
-                .insert([
-                    { name: defaultCommunityName, treasury_wallet_address: defaultTreasuryAddress }
-                ])
-                .select('community_id')
-                .single();
-            
-            if (newCommunity) {
-                communityId = newCommunity.community_id;
-            } else {
-                console.error('Failed to create default community:', createError);
-            }
+        if (!walletAddress || !alias || !communityId) {
+            return NextResponse.json({ error: 'Wallet address, alias, and community are required' }, { status: 400 });
         }
 
         // Insert the new member into Supabase

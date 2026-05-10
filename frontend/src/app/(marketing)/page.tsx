@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { Waves, Wallet, Lock, LayoutDashboard } from 'lucide-react';
+import { Wallet, Lock, LayoutDashboard } from 'lucide-react';
 
 export default function AgarthaLanding() {
   const router = useRouter();
@@ -41,7 +41,12 @@ export default function AgarthaLanding() {
 
             {/* Brand */}
             <a href="#" className="flex items-center gap-2 text-[#0A0A0A] transition-opacity hover:opacity-80">
-              <Waves className="w-5 h-5 text-[#0A0A0A]" />
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-[#0A0A0A]" aria-hidden="true">
+                <path d="M2.5 15.5c3-3 6-3 9 0s6 3 9 0" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"></path>
+                <path d="M19 4L5 20" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"></path>
+                <path d="M20 5l-3 3" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"></path>
+                <path d="M7 16l-3 3" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"></path>
+              </svg>
               <span className="text-lg font-bold tracking-tight text-[#0A0A0A]">
                 Agartha Kayak
               </span>

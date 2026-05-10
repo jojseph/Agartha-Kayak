@@ -49,6 +49,29 @@ interface ElderRequest {
   borrower?: { alias: string; barangay: string };
 }
 
+interface TreasuryElderRequest {
+  loan_id: string;
+  borrower_address: string;
+  amount: number;
+  purpose: string;
+  term_months?: number;
+  repayment_frequency?: string;
+  created_at: string;
+  status: 'pending' | 'approved' | 'rejected' | 'rejecting';
+  borrower?: { alias: string; barangay: string };
+  approve_count: number;
+  reject_count: number;
+  my_vote?: 'approve' | 'reject' | null;
+  rejectionReason?: string;
+}
+
+interface CommunityStats {
+  treasuryBalance: number;
+  activeLoanCount: number;
+  treasuryLoanCount: number;
+  peerLoanCount: number;
+}
+
 interface Transaction {
   fullHash: string;
   type: 'treasury' | 'member';
@@ -248,8 +271,23 @@ export default function DashboardTestPage() {
   const [treasuryModal, setTreasuryModal] = useState({ isOpen: false, step: 1 as number | 'success' });
   const [peerModal, setPeerModal] = useState({ isOpen: false, step: 1 as number | 'success' });
   const [elderModalOpen, setElderModalOpen] = useState(false);
+  const [treasuryElderModalOpen, setTreasuryElderModalOpen] = useState(false);
   const [txModal, setTxModal] = useState<{ isOpen: boolean, txKey: string | null }>({ isOpen: false, txKey: null });
   const [isCopied, setIsCopied] = useState(false);
+
+  // Community stats (dynamic)
+  const [communityStats, setCommunityStats] = useState<CommunityStats>({
+    treasuryBalance: 0,
+    activeLoanCount: 0,
+    treasuryLoanCount: 0,
+    peerLoanCount: 0,
+  });
+
+  // Treasury elder requests
+  const [treasuryElderRequests, setTreasuryElderRequests] = useState<TreasuryElderRequest[]>([]);
+
+  // Submitted treasury loan ID for success screen
+  const [tLoanId, setTLoanId] = useState<string | null>(null);
 
   // Treasury Loan Form State
   const [tAmount, setTAmount] = useState(0);
@@ -272,9 +310,62 @@ export default function DashboardTestPage() {
   // Elder Action State
   const [elderRequests, setElderRequests] = useState<ElderRequest[]>([]);
 
+  // Fetch community stats when address is available
+  useEffect(() => {
+    if (address) {
+      fetch(`/api/community/stats?address=${address}`, {
+        headers: { 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' }
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (d.treasuryBalance !== undefined) {
+            setCommunityStats({
+              treasuryBalance: d.treasuryBalance,
+              activeLoanCount: d.activeLoanCount,
+              treasuryLoanCount: d.treasuryLoanCount,
+              peerLoanCount: d.peerLoanCount,
+            });
+          }
+        })
+        .catch(console.error);
+    }
+  }, [address]);
+
   // Derived Peer Data
   const selectedNeighbor = neighbors.find(n => n.wallet_address === pNeighborId);
   const filteredNeighbors = neighbors.filter(n => (n.alias || '').toLowerCase().includes(pQuery.toLowerCase()));
+
+  // Submit treasury loan to API
+  const submitTreasuryLoan = async () => {
+    if (!address) return;
+    try {
+      const res = await fetch('/api/loans/treasury/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' },
+        body: JSON.stringify({
+          borrowerAddress: address,
+          amount: tAmount,
+          purpose: tPurpose,
+          termMonths: tTerm,
+          repaymentFrequency: tFreq,
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTLoanId(data.loan?.loan_id || null);
+        setTreasuryModal({ ...treasuryModal, step: 'success' });
+        // Refresh stats
+        fetch(`/api/community/stats?address=${address}`, {
+          headers: { 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' }
+        }).then(r => r.json()).then(d => { if (d.treasuryBalance !== undefined) setCommunityStats(d); }).catch(console.error);
+      } else {
+        console.error('Failed to submit treasury loan:', data.error);
+        alert(data.error || 'Failed to submit treasury loan request.');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   // Submit peer loan request to API
   const submitPeerLoan = async () => {
@@ -361,6 +452,51 @@ export default function DashboardTestPage() {
     setElderModalOpen(true);
   };
 
+  // Open Treasury Elder Modal — fetch treasury loan requests
+  const openTreasuryElderModal = async () => {
+    if (!address) return;
+    try {
+      const res = await fetch(`/api/loans/treasury/pending?address=${address}`, {
+        headers: { 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTreasuryElderRequests((data.requests || []).map((r: any) => ({
+          ...r,
+          status: r.status === 'pending' ? 'pending' : r.status,
+        })));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setTreasuryElderModalOpen(true);
+  };
+
+  // Vote on a treasury loan (approve or reject)
+  const voteOnTreasuryLoan = async (loanId: string, vote: 'approve' | 'reject', reason?: string) => {
+    if (!address) return;
+    try {
+      const res = await fetch('/api/loans/treasury/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' },
+        body: JSON.stringify({ loanId, elderAddress: address, vote })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTreasuryElderRequests(prev => prev.map(r => {
+          if (r.loan_id !== loanId) return r;
+          const newApprove = vote === 'approve' ? r.approve_count + 1 : r.approve_count;
+          const newStatus = data.rejected ? 'rejected' : data.approved ? 'approved' : 'pending';
+          return { ...r, my_vote: vote, approve_count: newApprove, status: newStatus, rejectionReason: reason };
+        }));
+      } else {
+        alert(data.error || 'Failed to cast vote.');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: CUSTOM_CSS }} />
@@ -392,11 +528,22 @@ export default function DashboardTestPage() {
       <section className="view view--dashboard is-active">
         <div className="container">
           
+          {memberData?.role === 'elder' && (
+            <div className="elder-panel" style={{ marginBottom: '12px', background: 'var(--text-2)' }}>
+              <span className="elder-panel__icon" aria-hidden="true"><Landmark size={16} /></span>
+              <div className="elder-panel__body">
+                <div className="elder-panel__head">Treasury Requests</div>
+                <div className="elder-panel__msg">Pending treasury loan requests in your community.</div>
+              </div>
+              <button className="elder-panel__cta" onClick={openTreasuryElderModal}>Review Now</button>
+            </div>
+          )}
+
           <div className="elder-panel">
             <span className="elder-panel__icon" aria-hidden="true"><HandCoins size={16} /></span>
             <div className="elder-panel__body">
               <div className="elder-panel__head">Member Requests</div>
-              <div className="elder-panel__msg">You have <strong>2 neighbors</strong> requesting to borrow from you.</div>
+              <div className="elder-panel__msg">You have <strong>{elderRequests.filter(r => r.status === 'pending').length}</strong> neighbors requesting to borrow from you.</div>
             </div>
             <button className="elder-panel__cta" onClick={openElderModal}>Review Now</button>
           </div>
@@ -408,18 +555,18 @@ export default function DashboardTestPage() {
                 Total Treasury Funds
               </div>
               <div className="stat-card__value stat-card__value--xl">
-                ₱&nbsp;125,000<span style={{ color: 'var(--text-3)' }}>.00</span>
+                ₱&nbsp;{communityStats.treasuryBalance.toLocaleString('en-PH', { maximumFractionDigits: 0 })}<span style={{ color: 'var(--text-3)' }}>.00</span>
               </div>
               <div className="stat-card__sub">
-                <span className="stat-trend"><TrendingUp size={11} /> +₱ 8,500</span>
-                this week, across 3 contributions
+                <span className="stat-trend"><TrendingUp size={11} /> +₱ 0</span>
+                this week, across 0 contributions
               </div>
             </div>
 
             <div className="stat-card">
               <div className="stat-card__label">Active Community Loans</div>
-              <div className="stat-card__value stat-card__value--lg">14</div>
-              <div className="stat-card__sub">9 treasury · 5 member-to-member</div>
+              <div className="stat-card__value stat-card__value--lg">{communityStats.activeLoanCount}</div>
+              <div className="stat-card__sub">{communityStats.treasuryLoanCount} treasury · {communityStats.peerLoanCount} member-to-member</div>
             </div>
           </div>
 
@@ -575,10 +722,10 @@ export default function DashboardTestPage() {
                   <div className="amount-meta">
                     <span className="amount-meta__pool">
                       <span className="dot"></span>
-                      <span>Available pool: <strong style={{ color: 'var(--text)', fontWeight: 600 }}>₱ 125,000.00</strong></span>
+                      <span>Available pool: <strong style={{ color: 'var(--text)', fontWeight: 600 }}>₱ {communityStats.treasuryBalance.toLocaleString('en-PH')}</strong></span>
                     </span>
-                    <span style={{ color: tAmount > POOL_BALANCE ? '#b91c1c' : tAmount > 0 ? 'var(--status-green)' : 'var(--text-3)' }}>
-                      {tAmount > POOL_BALANCE ? 'Exceeds available pool' : tAmount > 0 ? '✓ Valid amount' : 'Enter amount'}
+                    <span style={{ color: tAmount > communityStats.treasuryBalance ? '#b91c1c' : tAmount > 0 ? 'var(--status-green)' : 'var(--text-3)' }}>
+                      {tAmount > communityStats.treasuryBalance ? 'Exceeds available pool' : tAmount > 0 ? '✓ Valid amount' : 'Enter amount'}
                     </span>
                   </div>
                   
@@ -697,7 +844,7 @@ export default function DashboardTestPage() {
                   <p className="loan-success__sub">Your loan request has been sent to the cooperative elders. You'll receive a notification when reviewed.</p>
                   <span className="loan-success__ref">
                     <span className="loan-success__ref-label">Ref</span>
-                    <span>REQ-2026-0042</span>
+                    <span>{tLoanId || 'REQ-2026-0042'}</span>
                   </span>
                   <button className="btn btn-primary" style={{ width: '100%', maxWidth: '320px' }} onClick={() => setTreasuryModal({ ...treasuryModal, isOpen: false })}>
                     Back to Dashboard
@@ -714,12 +861,12 @@ export default function DashboardTestPage() {
                 <button 
                   className="btn btn-primary loan-modal__continue" 
                   disabled={
-                    (treasuryModal.step === 1 && (tAmount <= 0 || tAmount > POOL_BALANCE || tPurpose.trim().length < 5)) ||
+                    (treasuryModal.step === 1 && (tAmount <= 0 || tAmount > communityStats.treasuryBalance || tPurpose.trim().length < 5)) ||
                     (treasuryModal.step === 2 && false) ||
                     (treasuryModal.step === 3 && !tAccepted)
                   }
                   onClick={() => {
-                    if (treasuryModal.step === 3) setTreasuryModal({ ...treasuryModal, step: 'success' });
+                    if (treasuryModal.step === 3) submitTreasuryLoan();
                     else setTreasuryModal({ ...treasuryModal, step: (treasuryModal.step as number) + 1 });
                   }}
                 >
@@ -947,6 +1094,136 @@ export default function DashboardTestPage() {
                 </button>
               </footer>
             )}
+          </div>
+        </div>
+      )}
+
+
+      {/* --- TREASURY ELDER MODAL --- */}
+      {treasuryElderModalOpen && (
+        <div className="loan-modal is-open">
+          <div className="loan-modal__backdrop" onClick={() => setTreasuryElderModalOpen(false)}></div>
+          <div className="loan-modal__dialog">
+            <header className="loan-modal__header">
+              <div className="elder-modal__title-block">
+                <div className="elder-modal__title">Treasury Requests</div>
+                <div className="elder-modal__sub"><strong>{treasuryElderRequests.filter(r => r.status === 'pending').length}</strong> awaiting review in your community</div>
+              </div>
+              <button className="loan-modal__close" onClick={() => setTreasuryElderModalOpen(false)}><X size={14} /></button>
+            </header>
+            <div className="loan-modal__body">
+              <div className="pending-list">
+                {treasuryElderRequests.length === 0 ? (
+                  <div className="elder-empty is-visible">
+                    <div className="elder-empty__icon"><Landmark size={22} strokeWidth={2.5} /></div>
+                    <div className="elder-empty__title">All caught up</div>
+                    <div className="elder-empty__sub">No pending treasury requests in your community right now.</div>
+                    <button className="elder-empty__close" onClick={() => setTreasuryElderModalOpen(false)}>Close</button>
+                  </div>
+                ) : (
+                  treasuryElderRequests.map(req => {
+                    // Check if current user already voted on this request
+                    const alreadyVoted = !!req.my_vote;
+                    const needsMyVote = req.status === 'pending' && !alreadyVoted;
+                    
+                    return (
+                      <div key={req.loan_id} className={`pending-card ${req.status === 'approved' ? 'is-approved' : req.status === 'rejected' ? 'is-rejected' : req.status === 'rejecting' ? 'is-rejecting' : ''}`} style={alreadyVoted && req.status === 'pending' ? { opacity: 0.7 } : {}}>
+                        <div className="pending-card__top">
+                          <div className="pending-card__requester">
+                            <span className="pending-card__avatar">{initialsOf(req.borrower?.alias || '?')}</span>
+                            <div>
+                              <div className="pending-card__rname">{req.borrower?.alias || 'Unknown'}</div>
+                              <div className="pending-card__rmeta">
+                                <span>{(req.borrower?.barangay || 'Local').replace('Barangay ', '')}</span>
+                                <span className="pending-card__rmeta-divider"></span>
+                                <span style={{ color: 'var(--text-3)' }}>{new Date(req.created_at).toLocaleDateString()}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="pending-card__amount">
+                            <div className="pending-card__amount-value">₱ {req.amount?.toLocaleString('en-PH')}</div>
+                            <div className="pending-card__amount-label">Treasury</div>
+                          </div>
+                        </div>
+
+                        <div className="pending-card__details">
+                          <div className="pending-card__detail-row">
+                            <span className="pending-card__detail-label">Amount</span>
+                            <span className="pending-card__detail-value">₱ {req.amount?.toLocaleString('en-PH')}</span>
+                          </div>
+                          {req.term_months && (
+                            <div className="pending-card__detail-row">
+                              <span className="pending-card__detail-label">Term</span>
+                              <span className="pending-card__detail-value">{req.term_months} months / {req.repayment_frequency || 'monthly'}</span>
+                            </div>
+                          )}
+                          <div className="pending-card__detail-row" style={{ alignItems: 'flex-start', gridColumn: '1 / -1' }}>
+                            <span className="pending-card__detail-label">Purpose</span>
+                            <span className="pending-card__detail-value" style={{ fontWeight: 500, color: 'var(--text-2)' }}>{req.purpose}</span>
+                          </div>
+                        </div>
+
+                        {/* Status bar / Signatures count */}
+                        <div style={{ padding: '12px 20px', background: 'var(--surface-2)', borderTop: '1px solid var(--border)', fontSize: '12.5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ color: 'var(--text-2)', fontWeight: 500 }}>
+                            <ShieldCheck size={14} style={{ display: 'inline', verticalAlign: '-3px', marginRight: '6px' }} />
+                            Signatures: <strong style={{ color: 'var(--text)' }}>{req.approve_count} of 2</strong> required
+                          </span>
+                          {alreadyVoted && req.status === 'pending' && (
+                            <span style={{ color: 'var(--status-green)', fontWeight: 600 }}>✓ You approved</span>
+                          )}
+                        </div>
+
+                        {needsMyVote && (
+                          <div className="pending-card__actions">
+                            <button className="btn-reject" onClick={() => setTreasuryElderRequests(treasuryElderRequests.map(r => r.loan_id === req.loan_id ? { ...r, status: 'rejecting' } : r))}>
+                              <X size={14} strokeWidth={2.2} /> Reject
+                            </button>
+                            <button className="btn-approve" onClick={() => voteOnTreasuryLoan(req.loan_id, 'approve')}>
+                              <Check size={14} strokeWidth={2.2} /> Approve
+                            </button>
+                          </div>
+                        )}
+
+                        {req.status === 'rejecting' && (
+                          <div className="reject-reason" style={{ display: 'block' }}>
+                            <div className="reject-reason__head">Reason for rejecting</div>
+                            <textarea className="reject-reason__input" placeholder="Add a brief note (optional)..." id={`t-reject-reason-${req.loan_id}`}></textarea>
+                            <div className="reject-reason__actions">
+                              <button className="btn-cancel" onClick={() => setTreasuryElderRequests(treasuryElderRequests.map(r => r.loan_id === req.loan_id ? { ...r, status: 'pending' } : r))}>Cancel</button>
+                              <button className="btn-confirm-reject" onClick={() => {
+                                const ta = document.getElementById(`t-reject-reason-${req.loan_id}`) as HTMLTextAreaElement;
+                                voteOnTreasuryLoan(req.loan_id, 'reject', ta?.value || 'Rejected by elder');
+                              }}>Confirm Reject</button>
+                            </div>
+                          </div>
+                        )}
+
+                        {req.status === 'approved' && (
+                          <div className="pending-card__resolution pending-card__resolution--approved" style={{ display: 'flex' }}>
+                            <span className="resolution__icon resolution__icon--approved"><Check size={14} /></span>
+                            <div>
+                              <div className="resolution__head">Treasury Request Approved</div>
+                              <div className="resolution__sub">Funds will be disbursed to the member.</div>
+                            </div>
+                          </div>
+                        )}
+
+                        {req.status === 'rejected' && (
+                          <div className="pending-card__resolution pending-card__resolution--rejected" style={{ display: 'flex' }}>
+                            <span className="resolution__icon resolution__icon--rejected"><X size={14} /></span>
+                            <div>
+                              <div className="resolution__head">Request Rejected</div>
+                              <div className="resolution__sub">{req.rejectionReason || 'An elder has rejected this request.'}</div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1242,7 +1519,7 @@ const CUSTOM_CSS = `
     min-height: 100vh;
     background: var(--bg);
     color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, 'Segoe UI', Roboto, sans-serif;
     font-feature-settings: 'cv11', 'ss01', 'ss03';
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -1283,15 +1560,17 @@ const CUSTOM_CSS = `
   .brand {
     display: inline-flex;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
     font-weight: 700;
-    font-size: 16px;
+    font-size: 18px;
     line-height: 1;
     color: var(--text);
-    letter-spacing: -0.022em;
+    letter-spacing: -0.025em;
     flex-shrink: 0;
+    transition: opacity 160ms ease;
   }
-  .brand-text { letter-spacing: -0.022em; }
+  .brand:hover { opacity: 0.8; }
+  .brand-text { font-weight: 700; letter-spacing: -0.025em; }
 
   /* ===== USER MENU ===== */
   .user-menu {
