@@ -1,8 +1,4 @@
-'use client';
-
 import React, { useState, useEffect, useMemo } from 'react';
-import { useWallet } from '@meshsdk/react';
-import { useRouter } from 'next/navigation';
 import {
   Check,
   ShieldCheck,
@@ -28,25 +24,25 @@ type Frequency = 'weekly' | 'biweekly' | 'monthly';
 type PeerMode = 'money' | 'things';
 
 interface Neighbor {
-  wallet_address: string;
-  alias: string;
+  id: number;
+  name: string;
   barangay: string;
-  trust_score: number;
+  trust: number;
+  available: number;
 }
 
 interface ElderRequest {
-  loan_id: string;
-  borrower_address: string;
+  id: string;
+  requester: { name: string; barangay: string };
   mode: 'money' | 'things';
   amount?: number;
-  item_name?: string;
-  needed_by_date: string;
-  needed_by_time: string;
+  item?: string;
+  date: string;
+  time: string;
   purpose: string;
-  created_at: string;
+  submitted: string;
   status: 'pending' | 'rejecting' | 'rejected' | 'approved';
   rejectionReason?: string;
-  borrower?: { alias: string; barangay: string };
 }
 
 interface Transaction {
@@ -68,7 +64,41 @@ interface Transaction {
 // --- Constants & Mock Data ---
 const POOL_BALANCE = 125000;
 
-// Mock data removed — neighbors and elder requests are now fetched from the API
+const NEIGHBORS: Neighbor[] = [
+  { id: 1, name: 'Joselito Mendoza', barangay: 'Barangay San Roque', trust: 94, available: 8000 },
+  { id: 2, name: 'Cristina Bautista', barangay: 'Barangay Bagong Silang', trust: 88, available: 12000 },
+  { id: 3, name: 'Aurelio Salazar', barangay: 'Barangay Mabuhay', trust: 91, available: 5500 },
+  { id: 4, name: 'Lorna Pascual', barangay: 'Barangay Pag-asa', trust: 85, available: 3200 },
+  { id: 5, name: 'Estrella Villanueva', barangay: 'Barangay Maligaya', trust: 96, available: 15000 },
+  { id: 6, name: 'Felipe Aquino', barangay: 'Barangay Bayanihan', trust: 79, available: 4500 },
+  { id: 7, name: 'Ricardo Limbo', barangay: 'Barangay Magsaysay', trust: 90, available: 7000 },
+  { id: 8, name: 'Aldous Domingo', barangay: 'Barangay Santa Cruz', trust: 87, available: 10000 },
+];
+
+const ELDER_REQUESTS_INITIAL: ElderRequest[] = [
+  {
+    id: 'P2P-2026-0118',
+    requester: { name: 'Joselito Mendoza', barangay: 'Barangay San Roque' },
+    mode: 'money',
+    amount: 3500,
+    date: '2026-05-12',
+    time: '10:00',
+    purpose: "Need to cover my daughter's medication this month. Will repay weekly from my barber-shop earnings.",
+    submitted: '2 hours ago',
+    status: 'pending'
+  },
+  {
+    id: 'P2P-2026-0119',
+    requester: { name: 'Cristina Bautista', barangay: 'Barangay Bagong Silang' },
+    mode: 'things',
+    item: 'Electric drill',
+    date: '2026-05-14',
+    time: '14:30',
+    purpose: 'Fixing the roof of my sari-sari store before the typhoon season. Will return in good condition within a week.',
+    submitted: 'Yesterday',
+    status: 'pending'
+  },
+];
 
 const TX_DATA: Record<string, Transaction> = {
   'tx1q8w': {
@@ -217,39 +247,12 @@ const calcSchedule = (amount: number, term: number, freq: Frequency) => {
 // ==========================================
 // MAIN COMPONENT
 // ==========================================
-export default function DashboardTestPage() {
-  const { disconnect, connected, wallet } = useWallet();
-  const router = useRouter();
-  const [address, setAddress] = useState<string | null>(null);
-  const [memberData, setMemberData] = useState<any>(null);
-  const [neighbors, setNeighbors] = useState<Neighbor[]>([]);
-
-  // Fetch wallet address + member info on connect
-  useEffect(() => {
-    if (connected) {
-      wallet.getUsedAddresses().then(addrs => {
-        const addr = addrs[0];
-        setAddress(addr);
-        // Fetch member info
-        fetch('/api/members', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' },
-          body: JSON.stringify({ walletAddress: addr })
-        }).then(r => r.json()).then(d => { if (d.member) setMemberData(d.member); }).catch(console.error);
-        // Fetch neighbors (same community)
-        fetch(`/api/members/search?exclude=${addr}`, {
-          headers: { 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' }
-        }).then(r => r.json()).then(d => setNeighbors(d.members || [])).catch(console.error);
-      });
-    }
-  }, [connected, wallet]);
-
+export default function App() {
   // Modals States
   const [treasuryModal, setTreasuryModal] = useState({ isOpen: false, step: 1 as number | 'success' });
   const [peerModal, setPeerModal] = useState({ isOpen: false, step: 1 as number | 'success' });
   const [elderModalOpen, setElderModalOpen] = useState(false);
   const [txModal, setTxModal] = useState<{ isOpen: boolean, txKey: string | null }>({ isOpen: false, txKey: null });
-  const [isCopied, setIsCopied] = useState(false);
 
   // Treasury Loan Form State
   const [tAmount, setTAmount] = useState(0);
@@ -260,7 +263,7 @@ export default function DashboardTestPage() {
 
   // Peer Loan Form State
   const [pQuery, setPQuery] = useState('');
-  const [pNeighborId, setPNeighborId] = useState<string | null>(null);
+  const [pNeighborId, setPNeighborId] = useState<number | null>(null);
   const [pMode, setPMode] = useState<PeerMode>('money');
   const [pAmount, setPAmount] = useState(0);
   const [pThingName, setPThingName] = useState('');
@@ -273,52 +276,8 @@ export default function DashboardTestPage() {
   const [elderRequests, setElderRequests] = useState<ElderRequest[]>([]);
 
   // Derived Peer Data
-  const selectedNeighbor = neighbors.find(n => n.wallet_address === pNeighborId);
-  const filteredNeighbors = neighbors.filter(n => (n.alias || '').toLowerCase().includes(pQuery.toLowerCase()));
-
-  // Submit peer loan request to API
-  const submitPeerLoan = async () => {
-    if (!address || !pNeighborId) return;
-    try {
-      const res = await fetch('/api/loans/peer/request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' },
-        body: JSON.stringify({
-          borrowerAddress: address,
-          lenderAddress: pNeighborId,
-          mode: pMode,
-          amount: pAmount,
-          itemName: pThingName,
-          date: pDate,
-          time: pTime,
-          purpose: pPurpose
-        })
-      });
-      if (res.ok) {
-        setPeerModal({ ...peerModal, step: 'success' });
-      } else {
-        console.error('Failed to submit peer loan');
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // Respond to a loan request (approve/reject)
-  const respondToLoan = async (loanId: string, action: 'approved' | 'rejected', reason?: string) => {
-    try {
-      const res = await fetch('/api/loans/respond', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' },
-        body: JSON.stringify({ loanId, action, reason, lenderAddress: address })
-      });
-      if (res.ok) {
-        setElderRequests(elderRequests.map(r => r.loan_id === loanId ? { ...r, status: action } : r));
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  const selectedNeighbor = NEIGHBORS.find(n => n.id === pNeighborId);
+  const filteredNeighbors = NEIGHBORS.filter(n => n.name.toLowerCase().includes(pQuery.toLowerCase()));
 
   // Reset Treasury Modal when opened
   const openTreasuryModal = () => {
@@ -344,20 +303,10 @@ export default function DashboardTestPage() {
     setPeerModal({ isOpen: true, step: 1 });
   };
 
-  // Open Elder Modal — fetch real pending requests
-  const openElderModal = async () => {
-    if (!address) return;
-    try {
-      const res = await fetch(`/api/loans/requests?address=${address}`, {
-        headers: { 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setElderRequests((data.requests || []).map((r: any) => ({ ...r, status: 'pending' })));
-      }
-    } catch (err) {
-      console.error(err);
-    }
+  // Reset Elder Modal
+  const openElderModal = () => {
+    // Deep clone initial to refresh state for demo
+    setElderRequests(JSON.parse(JSON.stringify(ELDER_REQUESTS_INITIAL)));
     setElderModalOpen(true);
   };
 
@@ -378,12 +327,12 @@ export default function DashboardTestPage() {
 
         <div className="topbar__right">
           <div className="user-menu">
-            <span className="user-menu__avatar">{memberData ? initialsOf(memberData.alias) : '??'}</span>
+            <span className="user-menu__avatar">MR</span>
             <div className="user-menu__info">
-              <span className="user-menu__name">{memberData?.alias || 'Guest'}</span>
-              <span className="user-menu__addr">{address ? `${address.slice(0, 8)}…${address.slice(-4)}` : ''}</span>
+              <span className="user-menu__name">Maria L. Reyes</span>
+              <span className="user-menu__addr">addr1q9k…vt7s</span>
             </div>
-            <button className="user-menu__disconnect" type="button" onClick={() => { disconnect(); localStorage.removeItem('mesh-wallet-persist'); router.push('/'); }}>Disconnect</button>
+            <button className="user-menu__disconnect" type="button">Disconnect</button>
           </div>
         </div>
       </header>
@@ -767,9 +716,9 @@ export default function DashboardTestPage() {
                       <div className="peer-empty">No members match your search.</div>
                     ) : (
                       filteredNeighbors.map(n => (
-                        <button key={n.wallet_address} className={`peer-card peer-card--simple ${pNeighborId === n.wallet_address ? 'is-selected' : ''}`} onClick={() => setPNeighborId(n.wallet_address)}>
-                          <span className="peer-card__avatar">{initialsOf(n.alias || '?')}</span>
-                          <span className="peer-card__body"><span className="peer-card__name">{n.alias}</span> <span className="peer-card__sub">{n.barangay || 'Local'}</span></span>
+                        <button key={n.id} className={`peer-card peer-card--simple ${pNeighborId === n.id ? 'is-selected' : ''}`} onClick={() => setPNeighborId(n.id)}>
+                          <span className="peer-card__avatar">{initialsOf(n.name)}</span>
+                          <span className="peer-card__body"><span className="peer-card__name">{n.name}</span></span>
                           <span className="peer-card__radio"></span>
                         </button>
                       ))
@@ -781,8 +730,8 @@ export default function DashboardTestPage() {
               {peerModal.step === 2 && selectedNeighbor && (
                 <section className="loan-step is-active">
                   <span className="peer-chip">
-                    <span className="peer-chip__avatar">{initialsOf(selectedNeighbor.alias || '?')}</span>
-                    Request to <span className="peer-chip__name">{selectedNeighbor.alias}</span>
+                    <span className="peer-chip__avatar">{initialsOf(selectedNeighbor.name)}</span>
+                    Request to <span className="peer-chip__name">{selectedNeighbor.name}</span>
                   </span>
 
                   <h2 className="loan-step__title">What do you want to borrow?</h2>
@@ -804,7 +753,7 @@ export default function DashboardTestPage() {
                         <input className="amount-input" type="number" min="1" step="100" placeholder="0" value={pAmount || ''} onChange={e => setPAmount(Number(e.target.value) || 0)} />
                       </div>
                       <div className="amount-meta">
-                        <span className="amount-meta__pool"><span className="dot"></span><span>Sent directly to <span>{(selectedNeighbor.alias || '').split(' ')[0]}</span></span></span>
+                        <span className="amount-meta__pool"><span className="dot"></span><span>Sent directly to <span>{selectedNeighbor.name.split(' ')[0]}</span></span></span>
                         <span style={{ color: pAmount > 0 ? 'var(--status-green)' : 'var(--text-3)' }}>{pAmount > 0 ? '✓ Valid amount' : 'Enter amount'}</span>
                       </div>
                       <div className="quick-picks">
@@ -864,7 +813,7 @@ export default function DashboardTestPage() {
                   <div className="summary-list">
                     <div className="summary-row">
                       <span className="summary-row__label">Requesting from</span>
-                      <span className="summary-row__value">{selectedNeighbor.alias}</span>
+                      <span className="summary-row__value">{selectedNeighbor.name}</span>
                     </div>
                     {pMode === 'money' ? (
                       <div className="summary-row">
@@ -913,7 +862,7 @@ export default function DashboardTestPage() {
               {peerModal.step === 'success' && (
                 <div className="loan-success is-active">
                   <div className="loan-success__check"><Check size={28} strokeWidth={2.5} /></div>
-                  <div className="loan-success__title">Request sent to {selectedNeighbor?.alias}</div>
+                  <div className="loan-success__title">Request sent to {selectedNeighbor?.name}</div>
                   <p className="loan-success__sub">They'll receive a notification and can accept, counter, or decline. You'll see the response on your dashboard.</p>
                   <span className="loan-success__ref">
                     <span className="loan-success__ref-label">Ref</span>
@@ -939,7 +888,7 @@ export default function DashboardTestPage() {
                     (peerModal.step === 3 && !pAccepted)
                   }
                   onClick={() => {
-                    if (peerModal.step === 3) { submitPeerLoan(); }
+                    if (peerModal.step === 3) setPeerModal({ ...peerModal, step: 'success' });
                     else setPeerModal({ ...peerModal, step: (peerModal.step as number) + 1 });
                   }}
                 >
@@ -970,16 +919,16 @@ export default function DashboardTestPage() {
                   const isMoney = req.mode === 'money';
                   
                   return (
-                    <div key={req.loan_id} className={`pending-card ${req.status === 'approved' ? 'is-approved' : req.status === 'rejected' ? 'is-rejected' : req.status === 'rejecting' ? 'is-rejecting' : ''}`}>
+                    <div key={req.id} className={`pending-card ${req.status === 'approved' ? 'is-approved' : req.status === 'rejected' ? 'is-rejected' : req.status === 'rejecting' ? 'is-rejecting' : ''}`}>
                       <div className="pending-card__top">
                         <div className="pending-card__requester">
-                          <span className="pending-card__avatar">{initialsOf(req.borrower?.alias || '?')}</span>
+                          <span className="pending-card__avatar">{initialsOf(req.requester.name)}</span>
                           <div>
-                            <div className="pending-card__rname">{req.borrower?.alias || 'Unknown'}</div>
+                            <div className="pending-card__rname">{req.requester.name}</div>
                             <div className="pending-card__rmeta">
-                              <span>{(req.borrower?.barangay || 'Local').replace('Barangay ', '')}</span>
+                              <span>{req.requester.barangay.replace('Barangay ', '')}</span>
                               <span className="pending-card__rmeta-divider"></span>
-                              <span style={{ color: 'var(--text-3)' }}>{new Date(req.created_at).toLocaleDateString()}</span>
+                              <span style={{ color: 'var(--text-3)' }}>{req.submitted}</span>
                             </div>
                           </div>
                         </div>
@@ -990,7 +939,7 @@ export default function DashboardTestPage() {
                           </div>
                         ) : (
                           <div className="pending-card__amount">
-                            <div className="pending-card__amount-value" style={{ fontSize: '17px', fontWeight: 600, letterSpacing: '-0.018em' }}>{req.item_name}</div>
+                            <div className="pending-card__amount-value" style={{ fontSize: '17px', fontWeight: 600, letterSpacing: '-0.018em' }}>{req.item}</div>
                             <div className="pending-card__amount-label">Item</div>
                           </div>
                         )}
@@ -999,14 +948,14 @@ export default function DashboardTestPage() {
                       <div className="pending-card__details">
                         <div className="pending-card__detail-row">
                           <span className="pending-card__detail-label">{isMoney ? 'Amount' : 'Item'}</span>
-                          <span className="pending-card__detail-value">{isMoney ? `₱ ${req.amount?.toLocaleString('en-PH')}` : req.item_name}</span>
+                          <span className="pending-card__detail-value">{isMoney ? `₱ ${req.amount?.toLocaleString('en-PH')}` : req.item}</span>
                         </div>
-                        {req.needed_by_date && (
+                        {req.date && (
                           <div className="pending-card__detail-row">
                             <span className="pending-card__detail-label">When needed</span>
                             <span className="pending-card__detail-value">
-                              {new Date(req.needed_by_date).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}
-                              {req.needed_by_time && ` at ${new Date(`2026-01-01T${req.needed_by_time}`).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}`}
+                              {new Date(req.date).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}
+                              {req.time && ` at ${new Date(`2026-01-01T${req.time}`).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}`}
                             </span>
                           </div>
                         )}
@@ -1018,10 +967,10 @@ export default function DashboardTestPage() {
 
                       {req.status === 'pending' && (
                         <div className="pending-card__actions">
-                          <button className="btn-reject" onClick={() => setElderRequests(elderRequests.map(r => r.loan_id === req.loan_id ? { ...r, status: 'rejecting' } : r))}>
+                          <button className="btn-reject" onClick={() => setElderRequests(elderRequests.map(r => r.id === req.id ? { ...r, status: 'rejecting' } : r))}>
                             <X size={14} strokeWidth={2.2} /> Decline
                           </button>
-                          <button className="btn-approve" onClick={() => respondToLoan(req.loan_id, 'approved')}>
+                          <button className="btn-approve" onClick={() => setElderRequests(elderRequests.map(r => r.id === req.id ? { ...r, status: 'approved' } : r))}>
                             <Check size={14} strokeWidth={2.2} /> Accept
                           </button>
                         </div>
@@ -1040,12 +989,12 @@ export default function DashboardTestPage() {
                               if (textarea) textarea.value = "Insufficient funds";
                             }}>Insufficient funds</button>
                           </div>
-                          <textarea className="reject-reason__input" placeholder="Add a brief note (optional)..." id={`reject-reason-${req.loan_id}`}></textarea>
+                          <textarea className="reject-reason__input" placeholder="Add a brief note (optional)..." id={`reject-reason-${req.id}`}></textarea>
                           <div className="reject-reason__actions">
-                            <button className="btn-cancel" onClick={() => setElderRequests(elderRequests.map(r => r.loan_id === req.loan_id ? { ...r, status: 'pending' } : r))}>Cancel</button>
+                            <button className="btn-cancel" onClick={() => setElderRequests(elderRequests.map(r => r.id === req.id ? { ...r, status: 'pending' } : r))}>Cancel</button>
                             <button className="btn-confirm-reject" onClick={() => {
-                              const ta = document.getElementById(`reject-reason-${req.loan_id}`) as HTMLTextAreaElement;
-                              respondToLoan(req.loan_id, 'rejected', ta?.value || 'No reason provided.');
+                              const ta = document.getElementById(`reject-reason-${req.id}`) as HTMLTextAreaElement;
+                              setElderRequests(elderRequests.map(r => r.id === req.id ? { ...r, status: 'rejected', rejectionReason: ta?.value || 'No reason provided.' } : r))
                             }}>Confirm Decline</button>
                           </div>
                         </div>
@@ -1093,6 +1042,7 @@ export default function DashboardTestPage() {
       {txModal.isOpen && txModal.txKey && (() => {
         const tx = TX_DATA[txModal.txKey];
         const isFinalized = tx.confirmations >= tx.confirmsTotal;
+        const [isCopied, setIsCopied] = useState(false);
 
         const handleCopy = () => {
           navigator.clipboard.writeText(tx.fullHash).then(() => {

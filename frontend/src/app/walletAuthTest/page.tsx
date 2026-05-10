@@ -9,21 +9,20 @@ export default function WalletAuthTestPage() {
   const { connected, wallet, connect, disconnect } = useWallet();
   const router = useRouter();
   
-  // State Machine: controls what the user sees
   const [appState, setAppState] = useState<'disconnected' | 'checking' | 'needs_alias' | 'authenticated'>('disconnected');
   
   const [address, setAddress] = useState<string | null>(null);
-  const [alias, setAlias] = useState('');
   const [memberData, setMemberData] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState('');
-
   const [session, setSession] = useState('');
+
+  // Form states for the new onboarding UI
+  const [formState, setFormState] = useState<'idle' | 'animating' | 'success'>('idle');
 
   useEffect(() => {
     setSession(`agartha-kayak-${Date.now().toString(36)}`);
   }, []);
 
-  // 1. Listen for Wallet Connection
   useEffect(() => {
     if (connected) {
       wallet.getUsedAddresses().then((addrs) => {
@@ -34,16 +33,14 @@ export default function WalletAuthTestPage() {
         setErrorMessage("Failed to read wallet address.");
       });
     } else {
-      // Reset everything if disconnected
       setAppState('disconnected');
       setAddress(null);
       setMemberData(null);
-      setAlias('');
       setErrorMessage('');
+      setFormState('idle');
     }
   }, [connected, wallet]);
 
-  // 2. Check Database (The "Login" part)
   const checkLedger = async (walletAddr: string) => {
     setAppState('checking');
     setErrorMessage('');
@@ -61,10 +58,10 @@ export default function WalletAuthTestPage() {
       
       if (data.exists) {
         setMemberData(data.member);
-        setAppState('authenticated'); // Found them! Show dashboard.
+        setAppState('authenticated'); 
         router.push(`/dashboardTest?alias=${encodeURIComponent(data.member.alias)}`);
       } else {
-        setAppState('needs_alias'); // Not found. Prompt for alias.
+        setAppState('needs_alias'); 
       }
     } catch (err) {
       setErrorMessage("Failed to check the Bayanihan Ledger.");
@@ -72,14 +69,7 @@ export default function WalletAuthTestPage() {
     }
   };
 
-  // 3. Register New Member
-  const registerMember = async () => {
-    if (!alias.trim()) {
-      setErrorMessage("Paki-butang og alias, bai!");
-      return;
-    }
-
-    setAppState('checking'); // Show loading state
+  const registerMember = async (alias: string, barangay: string) => {
     setErrorMessage('');
 
     try {
@@ -89,20 +79,47 @@ export default function WalletAuthTestPage() {
           'Content-Type': 'application/json',
           'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '',
         },
-        body: JSON.stringify({ walletAddress: address, alias }),
+        body: JSON.stringify({ walletAddress: address, alias, barangay }),
       });
 
       if (res.ok) {
-        // Automatically check ledger again to fetch their new 50 Trust Score
-        checkLedger(address!); 
+        // Success
+        setFormState('animating');
+        setTimeout(() => {
+          setFormState('success');
+          // Wait a bit, then check ledger again or redirect directly
+          setTimeout(() => {
+            checkLedger(address!);
+          }, 1500);
+        }, 250);
       } else {
-        setErrorMessage("Failed to register. Please try again.");
-        setAppState('needs_alias');
+        const errorData = await res.json();
+        setErrorMessage(errorData.details || "Failed to register. Please try again.");
       }
     } catch (err) {
       setErrorMessage("Network error during registration.");
-      setAppState('needs_alias');
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+
+    const formData = new FormData(form);
+    const fullName = formData.get('full-name') as string;
+    const barangay = formData.get('barangay') as string;
+    
+    registerMember(fullName, barangay);
+  };
+
+  const handleBack = () => {
+    disconnect();
+    router.push('/');
   };
 
   const handleConnectLace = async () => {
@@ -118,6 +135,172 @@ export default function WalletAuthTestPage() {
     router.push('/');
   };
 
+  // ==========================================
+  // RENDER: Needs Alias (New Onboarding UI)
+  // ==========================================
+  if (appState === 'needs_alias') {
+    return (
+      <div className="min-h-screen lg:h-screen w-full grid grid-cols-1 lg:grid-cols-2 p-3 sm:p-6 gap-3 sm:gap-6 bg-white text-[#0A0A0A] font-sans lg:overflow-hidden">
+        
+        {/* LEFT: Hero Image Column */}
+        <aside className="relative flex flex-col justify-between p-4 sm:p-[18px] lg:p-6 rounded-[16px] lg:rounded-[24px] bg-[#F4F4F2] overflow-hidden min-h-[220px] max-h-[36vh] lg:max-h-none lg:min-h-0">
+          <img 
+            className="absolute inset-0 w-full h-full object-cover z-0" 
+            src="https://pub.hyperagent.com/api/published/pbf01KR6J230J_VVEMNMX509EY6PSF/registration_hero.jpg" 
+            alt="River landscape" 
+          />
+
+          <div className="relative z-10 flex items-center gap-2 self-start flex-wrap">
+            <button 
+              type="button"
+              onClick={handleBack}
+              className="inline-flex items-center gap-[6px] pl-2.5 pr-3 py-1.5 bg-white/90 backdrop-blur-md rounded-full text-xs font-semibold text-[#0A0A0A] cursor-pointer transition-all duration-150 hover:bg-white hover:-translate-x-0.5 active:scale-95"
+              aria-label="Go back"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Back
+            </button>
+            <div className="inline-flex items-center gap-2 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full text-xs font-semibold text-[#0A0A0A] tracking-[0.02em]">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-600 shadow-[0_0_0_4px_rgba(22,163,74,0.15)]"></span>
+              <span>Onboarding</span>
+            </div>
+          </div>
+
+          <div className="relative z-10 flex flex-wrap gap-y-[10px] gap-x-[22px] lg:gap-y-[18px] lg:gap-x-8 bg-black/45 backdrop-blur-md p-3 lg:py-3.5 lg:px-[18px] rounded-xl lg:rounded-2xl self-start text-white">
+            <div>
+              <div className="text-[9px] lg:text-[10px] font-medium tracking-[0.18em] uppercase text-white/70 mb-1">Step</div>
+              <div className="text-xs lg:text-[13px] font-medium">1 of 1 · Identity</div>
+            </div>
+            <div>
+              <div className="text-[9px] lg:text-[10px] font-medium tracking-[0.18em] uppercase text-white/70 mb-1">Cooperative</div>
+              <div className="text-xs lg:text-[13px] font-medium">Bayanihan Ledger</div>
+            </div>
+          </div>
+        </aside>
+
+        {/* RIGHT: Form Column */}
+        <main className="flex flex-col justify-center w-full max-w-none lg:max-w-[640px] mx-auto px-5 pt-7 pb-6 lg:px-[6vw] lg:py-8 lg:overflow-y-auto">
+          
+          {/* Form Section */}
+          {formState !== 'success' && (
+            <section 
+              className={`transition-all duration-200 ease-out ${formState === 'animating' ? 'opacity-0 pointer-events-none' : 'opacity-100 translate-y-0 animate-[fadeInUp_0.5s_ease-out]'}`}
+            >
+              <div className="text-[11px] font-semibold tracking-[0.16em] uppercase text-gray-500 mb-2.5">First-time onboarding</div>
+              <h1 className="text-[26px] lg:text-[30px] font-bold tracking-tight text-[#0A0A0A] leading-[1.1] mb-2.5">Welcome to Agartha Kayak</h1>
+              <p className="text-[14px] lg:text-[14.5px] text-gray-500 leading-[1.55] mb-[18px] lg:mb-[22px] max-w-[38ch]">
+                Please link your community identity to your secure wallet.
+              </p>
+
+              {errorMessage && (
+                <div className="mb-4 p-3 text-sm text-red-500 bg-red-50 border border-red-100 rounded-xl">
+                  {errorMessage}
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit} noValidate className="space-y-3 lg:space-y-3.5">
+                
+                {/* Full Legal Name */}
+                <div>
+                  <label className="block text-[13px] font-semibold text-gray-800 mb-[5px]" htmlFor="full-name">Full Legal Name</label>
+                  <input 
+                    className="w-full h-11 lg:h-[42px] px-3.5 bg-white border border-gray-200 rounded-xl text-[14px] lg:text-[14px] text-[#0A0A0A] placeholder-gray-400 focus:outline-none focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/10 transition-all" 
+                    id="full-name" 
+                    type="text" 
+                    name="full-name" 
+                    placeholder="Juan Dela Cruz" 
+                    required 
+                  />
+                </div>
+
+                {/* Barangay */}
+                <div>
+                  <label className="block text-[13px] font-semibold text-gray-800 mb-[5px]" htmlFor="barangay">Barangay / Cooperative Name</label>
+                  <select 
+                    className="w-full h-11 lg:h-[42px] pl-3.5 pr-10 bg-white border border-gray-200 rounded-xl text-[14px] lg:text-[14px] text-[#0A0A0A] focus:outline-none focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/10 transition-all appearance-none" 
+                    id="barangay" 
+                    name="barangay" 
+                    defaultValue="" 
+                    required
+                    style={{
+                      backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>")`,
+                      backgroundRepeat: 'no-repeat',
+                      backgroundPosition: 'right 14px center',
+                    }}
+                  >
+                    <option value="" disabled>Select your barangay…</option>
+                    <option>Barangay San Roque</option>
+                    <option>Barangay Bagong Silang</option>
+                    <option>Barangay Mabuhay</option>
+                    <option>Barangay Pag-asa</option>
+                    <option>Barangay Maligaya</option>
+                    <option>Barangay Santa Cruz</option>
+                    <option>Barangay Bayanihan</option>
+                    <option>Barangay Magsaysay</option>
+                    <option>Other / Not listed</option>
+                  </select>
+                </div>
+
+                {/* Submit */}
+                <button 
+                  className="inline-flex items-center justify-center gap-2.5 w-full h-12 lg:h-[46px] mt-1 bg-[#0A0A0A] text-white rounded-full text-[14.5px] font-semibold hover:bg-gray-800 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed" 
+                  type="submit"
+                  disabled={formState === 'animating'}
+                >
+                  Join Cooperative & Enter Vault
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                    <path d="M5 12h14" />
+                    <polyline points="12 5 19 12 12 19" />
+                  </svg>
+                </button>
+              </form>
+
+              <p className="mt-4 pt-3.5 border-t border-[#F0F0EE] text-[11.5px] leading-[1.55] text-gray-500">
+                Your financial records are secured by the Cardano blockchain. Your personal data is stored safely in our private database and never shared publicly.
+              </p>
+            </section>
+          )}
+
+          {/* Confirmation Card */}
+          {formState === 'success' && (
+            <section className="flex flex-col items-center text-center px-6 py-[60px] animate-[scaleIn_0.45s_ease-out_both]">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-green-600 to-green-500 flex items-center justify-center mb-6 shadow-[0_12px_24px_-8px_rgba(22,163,74,0.45)]">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7 text-white">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </div>
+              <h2 className="text-[26px] font-bold tracking-[-0.5px] mb-2.5">Welcome to the community</h2>
+              <p className="text-[14.5px] text-gray-500 leading-[1.6] max-w-[36ch] mx-auto mb-7">
+                Your community identity is now linked to your wallet. The cooperative vault is open to you — your transactions are now part of the Bayanihan Ledger.
+              </p>
+              <span className="inline-flex items-center gap-2 bg-[#F4F4F2] border border-[#E5E5E2] rounded-full px-4 py-2 text-[12.5px] font-semibold text-[#0A0A0A]">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-600 shadow-[0_0_0_4px_rgba(22,163,74,0.18)]"></span>
+                On-chain · Verified
+              </span>
+            </section>
+          )}
+
+        </main>
+
+        <style dangerouslySetInnerHTML={{__html: `
+          @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+          }
+          @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.96); }
+            to   { opacity: 1; transform: scale(1); }
+          }
+        `}} />
+      </div>
+    );
+  }
+
+  // ==========================================
+  // RENDER: Normal Connect Wallet UI
+  // ==========================================
   const qrData = `lace://connect?session=${session}`;
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qrData)}&ecc=H`;
 
@@ -254,47 +437,6 @@ export default function WalletAuthTestPage() {
           <div className="py-12 flex flex-col items-center justify-center space-y-6">
             <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
             <p className="text-[15px] font-medium text-[#6B7280]">Syncing with ledger...</p>
-          </div>
-        )}
-
-        {appState === 'needs_alias' && (
-          <div className="space-y-6 animate-in fade-in duration-500">
-            <div className="text-center">
-              <h1 className="text-[22px] font-bold tracking-tight text-[#0A0A0A]">
-                Welcome!
-              </h1>
-              <p className="mt-2.5 text-[13px] leading-[1.55] text-[#6B7280]">
-                Your wallet is connected, but we need an alias to identify you securely in the community.
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <label className="text-[13px] font-bold uppercase tracking-wider text-[#6B7280]">Your Community Alias</label>
-              <input 
-                type="text"
-                placeholder="e.g., Lando"
-                value={alias}
-                onChange={(e) => setAlias(e.target.value)}
-                className="w-full p-3.5 rounded-[14px] border border-[#E5E5E2] bg-[#F5F5F4] text-[#0A0A0A] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-blue-600/50 focus:border-blue-600 transition-all"
-                onKeyDown={(e) => e.key === 'Enter' && registerMember()}
-              />
-            </div>
-
-            <div className="space-y-3 pt-2">
-              <button 
-                onClick={registerMember}
-                className="w-full py-3.5 bg-blue-600 text-white rounded-[14px] font-semibold transition-all hover:bg-blue-700 active:scale-[0.995]"
-              >
-                Complete Registration
-              </button>
-              
-              <button 
-                onClick={() => disconnect()}
-                className="w-full py-3.5 text-[#6B7280] bg-transparent font-medium transition-colors rounded-[14px] hover:text-[#0A0A0A] hover:bg-[#F5F5F4]"
-              >
-                Cancel & Disconnect
-              </button>
-            </div>
           </div>
         )}
 

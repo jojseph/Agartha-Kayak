@@ -135,7 +135,7 @@ export const TreasuryLoanView = ({ isDark }: { isDark: boolean }) => {
 // --- Peer Loan View ---
 export const PeerLoanView = ({ isDark, address }: { isDark: boolean; address: string | null }) => {
   const { wallet } = useWallet();
-  const { aliasQuery, setAliasQuery, searchResults, selectedLender, setSelectedLender, isSearching } = memberSearchHook(isDark);
+  const { aliasQuery, setAliasQuery, searchResults, selectedLender, setSelectedLender, isSearching } = memberSearchHook(isDark, address);
   
   const [amount, setAmount] = useState('');
   const [purpose, setPurpose] = useState('');
@@ -487,7 +487,7 @@ export const PeerLoanView = ({ isDark, address }: { isDark: boolean; address: st
 };
 
 // Hook for debounced search
-function memberSearchHook(isDark: boolean) {
+function memberSearchHook(isDark: boolean, address: string | null) {
   const [aliasQuery, setAliasQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedLender, setSelectedLender] = useState<any>(null);
@@ -502,7 +502,7 @@ function memberSearchHook(isDark: boolean) {
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const res = await fetch(`/api/members/search?q=${encodeURIComponent(aliasQuery)}`, {
+        const res = await fetch(`/api/members/search?q=${encodeURIComponent(aliasQuery)}${address ? `&exclude=${address}` : ''}`, {
           headers: { 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' }
         });
         if (res.ok) {
