@@ -10,11 +10,11 @@ export async function POST(request: Request) {
     }
     
     try {
-        const { walletAddress, alias, communityId, barangay } = await request.json();
+        const { walletAddress, alias, communityId, barangay, email } = await request.json();
 
         // Validate inputs
-        if (!walletAddress || !alias || !communityId) {
-            return NextResponse.json({ error: 'Wallet address, alias, and community are required' }, { status: 400 });
+        if (!walletAddress || !alias || !communityId || !email) {
+            return NextResponse.json({ error: 'Wallet address, alias, community, and email are required' }, { status: 400 });
         }
 
         // Insert the new member into Supabase
@@ -24,6 +24,7 @@ export async function POST(request: Request) {
                 { 
                     wallet_address: walletAddress, 
                     alias: alias,
+                    email: email,
                     barangay: barangay || null,
                     community_id: communityId,
                     trust_score: 25.00 // The starting score for the Bayanihan Ledger

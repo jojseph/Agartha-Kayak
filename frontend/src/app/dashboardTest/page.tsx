@@ -65,6 +65,14 @@ interface TreasuryElderRequest {
   rejectionReason?: string;
 }
 
+interface PendingMember {
+  wallet_address: string;
+  alias: string;
+  email: string;
+  barangay: string;
+  created_at: string;
+}
+
 interface CommunityStats {
   treasuryBalance: number;
   activeLoanCount: number;
@@ -272,6 +280,7 @@ export default function DashboardTestPage() {
   const [peerModal, setPeerModal] = useState({ isOpen: false, step: 1 as number | 'success' });
   const [elderModalOpen, setElderModalOpen] = useState(false);
   const [treasuryElderModalOpen, setTreasuryElderModalOpen] = useState(false);
+  const [pendingMemberModalOpen, setPendingMemberModalOpen] = useState(false);
   const [txModal, setTxModal] = useState<{ isOpen: boolean, txKey: string | null }>({ isOpen: false, txKey: null });
   const [isCopied, setIsCopied] = useState(false);
 
@@ -285,6 +294,9 @@ export default function DashboardTestPage() {
 
   // Treasury elder requests
   const [treasuryElderRequests, setTreasuryElderRequests] = useState<TreasuryElderRequest[]>([]);
+
+  // Pending member requests
+  const [pendingMembers, setPendingMembers] = useState<PendingMember[]>([]);
 
   // Submitted treasury loan ID for success screen
   const [tLoanId, setTLoanId] = useState<string | null>(null);
@@ -472,6 +484,23 @@ export default function DashboardTestPage() {
     setTreasuryElderModalOpen(true);
   };
 
+  // Open Pending Members Modal
+  const openPendingMemberModal = async () => {
+    if (!address) return;
+    try {
+      const res = await fetch(`/api/members/pending?address=${address}`, {
+        headers: { 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPendingMembers(data.members || []);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setPendingMemberModalOpen(true);
+  };
+
   // Vote on a treasury loan (approve or reject)
   const voteOnTreasuryLoan = async (loanId: string, vote: 'approve' | 'reject', reason?: string) => {
     if (!address) return;
@@ -491,6 +520,26 @@ export default function DashboardTestPage() {
         }));
       } else {
         alert(data.error || 'Failed to cast vote.');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Respond to member registration
+  const respondToMember = async (memberAddress: string, action: 'approved' | 'rejected') => {
+    if (!address) return;
+    try {
+      const res = await fetch('/api/members/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' },
+        body: JSON.stringify({ elderAddress: address, memberAddress, action })
+      });
+      if (res.ok) {
+        setPendingMembers(prev => prev.filter(m => m.wallet_address !== memberAddress));
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to update member.');
       }
     } catch (err) {
       console.error(err);
@@ -529,14 +578,25 @@ export default function DashboardTestPage() {
         <div className="container">
           
           {memberData?.role === 'elder' && (
-            <div className="elder-panel" style={{ marginBottom: '12px', background: 'var(--text-2)' }}>
-              <span className="elder-panel__icon" aria-hidden="true"><Landmark size={16} /></span>
-              <div className="elder-panel__body">
-                <div className="elder-panel__head">Treasury Requests</div>
-                <div className="elder-panel__msg">Pending treasury loan requests in your community.</div>
+            <>
+              <div className="elder-panel" style={{ marginBottom: '12px', background: 'var(--text-2)' }}>
+                <span className="elder-panel__icon" aria-hidden="true"><Landmark size={16} /></span>
+                <div className="elder-panel__body">
+                  <div className="elder-panel__head">Treasury Requests</div>
+                  <div className="elder-panel__msg">Pending treasury loan requests in your community.</div>
+                </div>
+                <button className="elder-panel__cta" onClick={openTreasuryElderModal}>Review Now</button>
               </div>
-              <button className="elder-panel__cta" onClick={openTreasuryElderModal}>Review Now</button>
-            </div>
+
+              <div className="elder-panel" style={{ marginBottom: '12px', background: 'var(--text-2)' }}>
+                <span className="elder-panel__icon" aria-hidden="true"><Users size={16} /></span>
+                <div className="elder-panel__body">
+                  <div className="elder-panel__head">New Member Requests</div>
+                  <div className="elder-panel__msg">Approve or reject new arrivals to your cooperative.</div>
+                </div>
+                <button className="elder-panel__cta" onClick={openPendingMemberModal}>Review Now</button>
+              </div>
+            </>
           )}
 
           <div className="elder-panel">

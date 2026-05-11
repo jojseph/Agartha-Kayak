@@ -1,0 +1,50 @@
+import { NextResponse } from 'next/server';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
+
+export async function GET(request: Request) {
+    const authHeader = request.headers.get('Authorization');
+    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
+        return NextResponse.json({ error: 'Unauthorized BRAH!' }, { status: 401 });
+    }
+    
+    try {
+        const url = new URL(request.url);
+        const elderAddress = url.searchParams.get('address'); 
+
+        if (!elderAddress) {
+            return NextResponse.json({ error: 'Elder wallet address is required' }, { status: 400 });
+        }
+
+        // Verify that the requester is an elder and get their community_id
+        const { data: elderData, error: elderError } = await supabaseAdmin
+            .from('members')
+            .select('role, community_id')
+            .eq('wallet_address', elderAddress)
+            .single();
+
+        if (elderError || !elderData) {
+            return NextResponse.json({ error: 'Could not verify elder status' }, { status: 500 });
+        }
+
+        if (elderData.role !== 'elder') {
+            return NextResponse.json({ error: 'Forbidden. Only elders can view pending members.' }, { status: 403 });
+        }
+
+        // Fetch pending members for that community
+        const { data: pendingMembers, error: pendingError } = await supabaseAdmin
+            .from('members')
+            .select('*')
+            .eq('community_id', elderData.community_id)
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false });
+
+        if (pendingError) {
+            console.error('Fetch pending members error:', pendingError);
+            return NextResponse.json({ error: 'Database error' }, { status: 500 });
+        }
+
+        return NextResponse.json({ members: pendingMembers || [] });
+    } catch (err) {
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
+}

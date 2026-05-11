@@ -9,7 +9,7 @@ export default function WalletAuthTestPage() {
   const { connected, wallet, connect, disconnect } = useWallet();
   const router = useRouter();
   
-  const [appState, setAppState] = useState<'disconnected' | 'checking' | 'needs_alias' | 'authenticated'>('disconnected');
+  const [appState, setAppState] = useState<'disconnected' | 'checking' | 'needs_alias' | 'pending_approval' | 'rejected' | 'authenticated'>('disconnected');
   
   const [address, setAddress] = useState<string | null>(null);
   const [memberData, setMemberData] = useState<any>(null);
@@ -66,8 +66,14 @@ export default function WalletAuthTestPage() {
       
       if (data.exists) {
         setMemberData(data.member);
-        setAppState('authenticated'); 
-        router.push(`/dashboardTest?alias=${encodeURIComponent(data.member.alias)}`);
+        if (data.member.status === 'pending') {
+          setAppState('pending_approval');
+        } else if (data.member.status === 'rejected') {
+          setAppState('rejected');
+        } else {
+          setAppState('authenticated'); 
+          router.push(`/dashboardTest?alias=${encodeURIComponent(data.member.alias)}`);
+        }
       } else {
         setAppState('needs_alias'); 
       }
@@ -77,7 +83,7 @@ export default function WalletAuthTestPage() {
     }
   };
 
-  const registerMember = async (alias: string, communityId: string, barangay: string) => {
+  const registerMember = async (alias: string, email: string, communityId: string, barangay: string) => {
     setErrorMessage('');
 
     try {
@@ -87,7 +93,7 @@ export default function WalletAuthTestPage() {
           'Content-Type': 'application/json',
           'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '',
         },
-        body: JSON.stringify({ walletAddress: address, alias, communityId, barangay }),
+        body: JSON.stringify({ walletAddress: address, alias, email, communityId, barangay }),
       });
 
       if (res.ok) {
@@ -120,11 +126,12 @@ export default function WalletAuthTestPage() {
 
     const formData = new FormData(form);
     const fullName = formData.get('full-name') as string;
+    const emailAddress = formData.get('email-address') as string;
     const communityId = formData.get('barangay') as string;
     const selectEl = form.elements.namedItem('barangay') as HTMLSelectElement;
     const barangayName = selectEl.options[selectEl.selectedIndex].text;
     
-    registerMember(fullName, communityId, barangayName);
+    registerMember(fullName, emailAddress, communityId, barangayName);
   };
 
   const handleBack = () => {
@@ -224,6 +231,19 @@ export default function WalletAuthTestPage() {
                     required 
                   />
                 </div>
+                
+                {/* Email Address */}
+                <div>
+                  <label className="block text-[13px] font-semibold text-gray-800 mb-[5px]" htmlFor="email-address">Email Address</label>
+                  <input 
+                    className="w-full h-11 lg:h-[42px] px-3.5 bg-white border border-gray-200 rounded-xl text-[14px] lg:text-[14px] text-[#0A0A0A] placeholder-gray-400 focus:outline-none focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/10 transition-all" 
+                    id="email-address" 
+                    type="email" 
+                    name="email-address" 
+                    placeholder="juan@example.com" 
+                    required 
+                  />
+                </div>
 
                 {/* Barangay */}
                 <div>
@@ -300,6 +320,56 @@ export default function WalletAuthTestPage() {
             to   { opacity: 1; transform: scale(1); }
           }
         `}} />
+      </div>
+    );
+  }
+
+  // ==========================================
+  // RENDER: Pending Approval State
+  // ==========================================
+  if (appState === 'pending_approval') {
+    return (
+      <div className="min-h-screen w-full bg-[#FAFAFA] text-[#0A0A0A] flex items-center justify-center p-4">
+        <div className="w-full max-w-[440px] bg-white rounded-[24px] px-9 pt-10 pb-8 relative shadow-[0_1px_2px_rgba(16,24,40,0.04),0_24px_48px_-16px_rgba(16,24,40,0.10)] text-center">
+          <button onClick={handleBack} className="absolute top-[18px] right-[18px] w-8 h-8 rounded-full bg-[#F3F3F1] text-[#6B7280] flex items-center justify-center transition-colors hover:bg-[#E5E5E2] hover:text-[#0A0A0A]">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+          <div className="w-16 h-16 rounded-full bg-yellow-100 flex items-center justify-center mx-auto mb-6">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7 text-yellow-600"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <h2 className="text-[22px] font-bold tracking-tight mb-2.5">Waiting for Approval</h2>
+          <p className="text-[14.5px] text-gray-500 leading-[1.6] mb-6">
+            Your registration is currently under review by the community elders. You will receive an email notification once your account has been approved.
+          </p>
+          <button onClick={handleBack} className="inline-flex items-center justify-center w-full h-12 bg-[#F4F4F2] text-[#0A0A0A] rounded-full text-[14.5px] font-semibold hover:bg-[#E5E5E2] transition-colors">
+            Return Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // RENDER: Rejected State
+  // ==========================================
+  if (appState === 'rejected') {
+    return (
+      <div className="min-h-screen w-full bg-[#FAFAFA] text-[#0A0A0A] flex items-center justify-center p-4">
+        <div className="w-full max-w-[440px] bg-white rounded-[24px] px-9 pt-10 pb-8 relative shadow-[0_1px_2px_rgba(16,24,40,0.04),0_24px_48px_-16px_rgba(16,24,40,0.10)] text-center">
+          <button onClick={handleBack} className="absolute top-[18px] right-[18px] w-8 h-8 rounded-full bg-[#F3F3F1] text-[#6B7280] flex items-center justify-center transition-colors hover:bg-[#E5E5E2] hover:text-[#0A0A0A]">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+          <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-6">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7 text-red-600"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          </div>
+          <h2 className="text-[22px] font-bold tracking-tight mb-2.5">Application Rejected</h2>
+          <p className="text-[14.5px] text-gray-500 leading-[1.6] mb-6">
+            Unfortunately, your request to join the cooperative was declined by the community elders. Please contact an elder directly if you believe this was a mistake.
+          </p>
+          <button onClick={handleBack} className="inline-flex items-center justify-center w-full h-12 bg-[#F4F4F2] text-[#0A0A0A] rounded-full text-[14.5px] font-semibold hover:bg-[#E5E5E2] transition-colors">
+            Return Home
+          </button>
+        </div>
       </div>
     );
   }

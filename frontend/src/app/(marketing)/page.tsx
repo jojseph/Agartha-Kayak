@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Wallet, Lock, LayoutDashboard } from 'lucide-react';
 
 export default function AgarthaLanding() {
@@ -25,7 +26,7 @@ export default function AgarthaLanding() {
       {/* Background Video */}
       <video
         className="absolute inset-0 z-0 w-full h-full object-cover"
-        src="https://pub.hyperagent.com/api/published/YgG781Irg-bYF-dqIJamZg/looping_video_2.mp4"
+        src="/videos/hero_background.mp4"
         autoPlay
         loop
         muted
@@ -54,14 +55,18 @@ export default function AgarthaLanding() {
 
             {/* Links (Hidden on Mobile) */}
             <div className="hidden md:flex items-center gap-8">
-              {['How It Works', 'Public Records', 'FAQ'].map((link) => (
-                <a
-                  key={link}
-                  href="#"
+              {[
+                { name: 'How It Works', path: '/how-it-works' },
+                { name: 'Public Records', path: '#' },
+                { name: 'FAQ', path: '/faq' }
+              ].map((link) => (
+                <Link
+                  key={link.name}
+                  href={link.path}
                   className="text-sm font-medium text-[#1F1F1F] hover:text-gray-500 transition-colors duration-150"
                 >
-                  {link}
-                </a>
+                  {link.name}
+                </Link>
               ))}
             </div>
 
