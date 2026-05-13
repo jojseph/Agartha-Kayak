@@ -269,6 +269,20 @@ export default function WalletAuthTestPage() {
                   </select>
                 </div>
 
+                {/* Government ID Number */}
+                <div>
+                  <label className="block text-[13px] font-semibold text-gray-800 mb-[5px]" htmlFor="gov-id">Government ID Number</label>
+                  <input 
+                    className="w-full h-11 lg:h-[42px] px-3.5 bg-white border border-gray-200 rounded-xl text-[14px] lg:text-[14px] text-[#0A0A0A] placeholder-gray-400 focus:outline-none focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/10 transition-all" 
+                    id="gov-id" 
+                    type="text" 
+                    name="gov-id" 
+                    placeholder="e.g. PhilSys ID, SSS, TIN, or Passport number" 
+                    required 
+                  />
+                  <p className="mt-1 text-[11px] text-gray-400">Required for identity verification. This will be stored securely and never shared publicly.</p>
+                </div>
+
                 {/* Submit */}
                 <button 
                   className="inline-flex items-center justify-center gap-2.5 w-full h-12 lg:h-[46px] mt-1 bg-[#0A0A0A] text-white rounded-full text-[14.5px] font-semibold hover:bg-gray-800 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed" 
@@ -495,7 +509,7 @@ export default function WalletAuthTestPage() {
             {/* Footer */}
             <div className="mt-6 pt-5 border-t border-[#F0F0EE] text-center">
               <p className="text-[13px] font-medium text-[#6B7280]">
-                Don't have Lace?{' '}
+                Don&apos;t have Lace?{' '}
                 <a
                   href="https://www.lace.io/"
                   target="_blank"

@@ -1,36 +1,35 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
+-- Last updated: Phase 1 MVP Restructure (2026-05-12)
 
 CREATE TABLE public.communities (
   community_id uuid NOT NULL DEFAULT gen_random_uuid(),
   name text NOT NULL,
   treasury_wallet_address text NOT NULL UNIQUE,
+  owner_address text,
+  initial_funds numeric DEFAULT 0,
+  share_capital_required numeric DEFAULT 500,
   created_at timestamp with time zone DEFAULT now(),
   treasury_balance numeric DEFAULT 0,
-  CONSTRAINT communities_pkey PRIMARY KEY (community_id)
+  CONSTRAINT communities_pkey PRIMARY KEY (community_id),
+  CONSTRAINT communities_owner_address_fkey FOREIGN KEY (owner_address) REFERENCES public.members(wallet_address)
 );
-CREATE TABLE public.community_transactions (
-  transaction_id uuid NOT NULL DEFAULT gen_random_uuid(),
-  community_id uuid NOT NULL,
-  loan_id uuid,
-  repayment_id uuid,
-  transaction_type text NOT NULL CHECK (transaction_type = ANY (ARRAY['loan'::text, 'repayment'::text])),
+
+CREATE TABLE public.members (
+  wallet_address text NOT NULL,
+  alias character varying NOT NULL UNIQUE,
+  email text,
+  role text DEFAULT 'member'::text CHECK (role = ANY (ARRAY['member'::text, 'elder'::text, 'owner'::text, 'superuser'::text])),
+  trust_score numeric DEFAULT 0.00 CHECK (trust_score >= 0::numeric AND trust_score <= 100::numeric),
+  status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])),
+  id_document_url text,
   created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT community_transactions_pkey PRIMARY KEY (transaction_id),
-  CONSTRAINT community_transactions_community_id_fkey FOREIGN KEY (community_id) REFERENCES public.communities(community_id),
-  CONSTRAINT community_transactions_loan_id_fkey FOREIGN KEY (loan_id) REFERENCES public.loans(loan_id),
-  CONSTRAINT community_transactions_repayment_id_fkey FOREIGN KEY (repayment_id) REFERENCES public.repayments(repayment_id)
+  community_id uuid,
+  barangay text,
+  CONSTRAINT members_pkey PRIMARY KEY (wallet_address),
+  CONSTRAINT fk_members_community FOREIGN KEY (community_id) REFERENCES public.communities(community_id)
 );
-CREATE TABLE public.elder_signatures (
-  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  loan_id uuid NOT NULL,
-  elder_address text NOT NULL,
-  signature_hex text NOT NULL,
-  signed_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT elder_signatures_pkey PRIMARY KEY (id),
-  CONSTRAINT elder_signatures_loan_id_fkey FOREIGN KEY (loan_id) REFERENCES public.loans(loan_id),
-  CONSTRAINT elder_signatures_elder_address_fkey FOREIGN KEY (elder_address) REFERENCES public.members(wallet_address)
-);
+
 CREATE TABLE public.loans (
   loan_id uuid NOT NULL DEFAULT gen_random_uuid(),
   borrower_address text NOT NULL,
@@ -39,7 +38,9 @@ CREATE TABLE public.loans (
   amount numeric NOT NULL,
   currency text DEFAULT 'PHP'::text,
   purpose text NOT NULL,
-  status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'approved'::text, 'active'::text, 'rejected'::text, 'completed'::text, 'defaulted'::text])),
+  collateral text,
+  interest_rate numeric DEFAULT 0.01 CHECK (interest_rate >= 0 AND interest_rate <= 0.05),
+  status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'approved'::text, 'active'::text, 'rejected'::text, 'completed'::text, 'fully_paid'::text, 'overdue'::text, 'defaulted'::text, 'invalid'::text])),
   proof_url text,
   sigs_required integer DEFAULT 0 CHECK (sigs_required >= 0),
   agreement_hash text,
@@ -56,19 +57,7 @@ CREATE TABLE public.loans (
   CONSTRAINT loans_borrower_address_fkey FOREIGN KEY (borrower_address) REFERENCES public.members(wallet_address),
   CONSTRAINT loans_lender_address_fkey FOREIGN KEY (lender_address) REFERENCES public.members(wallet_address)
 );
-CREATE TABLE public.members (
-  wallet_address text NOT NULL,
-  alias character varying NOT NULL UNIQUE,
-  email text,
-  role text DEFAULT 'member'::text CHECK (role = ANY (ARRAY['member'::text, 'elder'::text])),
-  trust_score numeric DEFAULT 0.00 CHECK (trust_score >= 0::numeric AND trust_score <= 100::numeric),
-  status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])),
-  created_at timestamp with time zone DEFAULT now(),
-  community_id uuid,
-  barangay text,
-  CONSTRAINT members_pkey PRIMARY KEY (wallet_address),
-  CONSTRAINT fk_members_community FOREIGN KEY (community_id) REFERENCES public.communities(community_id)
-);
+
 CREATE TABLE public.repayments (
   repayment_id uuid NOT NULL DEFAULT gen_random_uuid(),
   loan_id uuid NOT NULL,
@@ -76,11 +65,44 @@ CREATE TABLE public.repayments (
   amount numeric NOT NULL CHECK (amount > 0::numeric),
   method text DEFAULT 'cash'::text,
   reference_code text UNIQUE,
+  status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'confirmed'::text, 'rejected'::text])),
+  confirmed_by text,
+  confirmed_at timestamp with time zone,
   repaid_at timestamp with time zone DEFAULT now(),
   CONSTRAINT repayments_pkey PRIMARY KEY (repayment_id),
   CONSTRAINT repayments_loan_id_fkey FOREIGN KEY (loan_id) REFERENCES public.loans(loan_id),
-  CONSTRAINT repayments_payer_address_fkey FOREIGN KEY (payer_address) REFERENCES public.members(wallet_address)
+  CONSTRAINT repayments_payer_address_fkey FOREIGN KEY (payer_address) REFERENCES public.members(wallet_address),
+  CONSTRAINT repayments_confirmed_by_fkey FOREIGN KEY (confirmed_by) REFERENCES public.members(wallet_address)
 );
+
+CREATE TABLE public.community_transactions (
+  transaction_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  community_id uuid NOT NULL,
+  member_address text,
+  loan_id uuid,
+  repayment_id uuid,
+  transaction_type text NOT NULL CHECK (transaction_type = ANY (ARRAY['loan'::text, 'repayment'::text, 'share_capital'::text, 'deposit'::text, 'reconciliation'::text])),
+  amount numeric DEFAULT 0,
+  description text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT community_transactions_pkey PRIMARY KEY (transaction_id),
+  CONSTRAINT community_transactions_community_id_fkey FOREIGN KEY (community_id) REFERENCES public.communities(community_id),
+  CONSTRAINT community_transactions_member_address_fkey FOREIGN KEY (member_address) REFERENCES public.members(wallet_address),
+  CONSTRAINT community_transactions_loan_id_fkey FOREIGN KEY (loan_id) REFERENCES public.loans(loan_id),
+  CONSTRAINT community_transactions_repayment_id_fkey FOREIGN KEY (repayment_id) REFERENCES public.repayments(repayment_id)
+);
+
+CREATE TABLE public.elder_signatures (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  loan_id uuid NOT NULL,
+  elder_address text NOT NULL,
+  signature_hex text NOT NULL,
+  signed_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT elder_signatures_pkey PRIMARY KEY (id),
+  CONSTRAINT elder_signatures_loan_id_fkey FOREIGN KEY (loan_id) REFERENCES public.loans(loan_id),
+  CONSTRAINT elder_signatures_elder_address_fkey FOREIGN KEY (elder_address) REFERENCES public.members(wallet_address)
+);
+
 CREATE TABLE public.treasury_loan_votes (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   loan_id uuid NOT NULL,
@@ -90,4 +112,32 @@ CREATE TABLE public.treasury_loan_votes (
   CONSTRAINT treasury_loan_votes_pkey PRIMARY KEY (id),
   CONSTRAINT treasury_loan_votes_loan_id_fkey FOREIGN KEY (loan_id) REFERENCES public.loans(loan_id),
   CONSTRAINT treasury_loan_votes_elder_address_fkey FOREIGN KEY (elder_address) REFERENCES public.members(wallet_address)
+);
+
+CREATE TABLE public.treasury_reconciliations (
+  reconciliation_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  community_id uuid NOT NULL,
+  proposed_by text NOT NULL,
+  previous_balance numeric NOT NULL,
+  proposed_balance numeric NOT NULL,
+  reason text NOT NULL,
+  status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])),
+  sigs_required integer DEFAULT 2 CHECK (sigs_required >= 1),
+  created_at timestamp with time zone DEFAULT now(),
+  resolved_at timestamp with time zone,
+  CONSTRAINT treasury_reconciliations_pkey PRIMARY KEY (reconciliation_id),
+  CONSTRAINT treasury_reconciliations_community_id_fkey FOREIGN KEY (community_id) REFERENCES public.communities(community_id),
+  CONSTRAINT treasury_reconciliations_proposed_by_fkey FOREIGN KEY (proposed_by) REFERENCES public.members(wallet_address)
+);
+
+CREATE TABLE public.reconciliation_signatures (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  reconciliation_id uuid NOT NULL,
+  elder_address text NOT NULL,
+  decision text NOT NULL CHECK (decision = ANY (ARRAY['approve'::text, 'reject'::text])),
+  signed_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT reconciliation_signatures_pkey PRIMARY KEY (id),
+  CONSTRAINT reconciliation_signatures_reconciliation_id_fkey FOREIGN KEY (reconciliation_id) REFERENCES public.treasury_reconciliations(reconciliation_id),
+  CONSTRAINT reconciliation_signatures_elder_address_fkey FOREIGN KEY (elder_address) REFERENCES public.members(wallet_address),
+  CONSTRAINT reconciliation_signatures_unique UNIQUE (reconciliation_id, elder_address)
 );

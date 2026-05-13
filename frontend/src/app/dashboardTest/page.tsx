@@ -20,7 +20,10 @@ import {
   Copy,
   ExternalLink,
   HandCoins,
-  ArrowUpRight
+  ArrowUpRight,
+  Shield,
+  Clock,
+  Layers
 } from 'lucide-react';
 
 // --- Types ---
@@ -301,9 +304,17 @@ export default function DashboardTestPage() {
   // Submitted treasury loan ID for success screen
   const [tLoanId, setTLoanId] = useState<string | null>(null);
 
+  // Reconciliation state
+  const [reconModalOpen, setReconModalOpen] = useState(false);
+  const [reconList, setReconList] = useState<any[]>([]);
+  const [reconProposing, setReconProposing] = useState(false);
+  const [reconBalance, setReconBalance] = useState('');
+  const [reconReason, setReconReason] = useState('');
+
   // Treasury Loan Form State
   const [tAmount, setTAmount] = useState(0);
   const [tPurpose, setTPurpose] = useState('');
+  const [tCollateral, setTCollateral] = useState('');
   const [tTerm, setTTerm] = useState(6);
   const [tFreq, setTFreq] = useState<Frequency>('monthly');
   const [tAccepted, setTAccepted] = useState(false);
@@ -321,6 +332,47 @@ export default function DashboardTestPage() {
 
   // Elder Action State
   const [elderRequests, setElderRequests] = useState<ElderRequest[]>([]);
+
+  // --- NETWORK QUEUE STATE (Dynamic Simulation) ---
+  const [queueItems, setQueueItems] = useState([
+    { id: 1, label: 'Treasury Loan Approval', meta: 'Vote recorded · Awaiting batch', status: 'queued' },
+    { id: 2, label: 'Member Share Capital', meta: '₱ 500 contribution · Awaiting batch', status: 'queued' },
+    { id: 3, label: 'P2P Loan + 2 Repayments', meta: '3 records grouped · Submitting...', status: 'etching' },
+    { id: 4, label: 'Reconciliation + 4 Votes', meta: '5 records · Block #9,847,321', status: 'done' },
+  ]);
+
+  // Simulation: Progress the queue every 8 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setQueueItems(prev => {
+        const next = [...prev];
+        // Simple cycle for demo: Move item 1 from queued -> etching -> done
+        if (next[0].status === 'queued') {
+          next[0].status = 'etching';
+          next[0].meta = 'Vote recorded · Submitting batch...';
+        } else if (next[0].status === 'etching') {
+          next[0].status = 'done';
+          next[0].meta = `Vote recorded · Block #${Math.floor(Math.random() * 1000000) + 9000000}`;
+          
+          // Rotate items: move the done one to the end and make a new one queued
+          setTimeout(() => {
+            setQueueItems(current => {
+              const rotated = [...current];
+              const first = rotated.shift();
+              if (first) {
+                first.status = 'queued';
+                first.meta = 'Awaiting batch...';
+                rotated.push(first);
+              }
+              return rotated;
+            });
+          }, 3000);
+        }
+        return next;
+      });
+    }, 8000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch community stats when address is available
   useEffect(() => {
@@ -358,6 +410,7 @@ export default function DashboardTestPage() {
           borrowerAddress: address,
           amount: tAmount,
           purpose: tPurpose,
+          collateral: tCollateral,
           termMonths: tTerm,
           repaymentFrequency: tFreq,
         })
@@ -427,6 +480,7 @@ export default function DashboardTestPage() {
   const openTreasuryModal = () => {
     setTAmount(0);
     setTPurpose('');
+    setTCollateral('');
     setTTerm(6);
     setTFreq('monthly');
     setTAccepted(false);
@@ -576,8 +630,8 @@ export default function DashboardTestPage() {
       {/* --- PATH B: DASHBOARD --- */}
       <section className="view view--dashboard is-active">
         <div className="container">
-          
-          {memberData?.role === 'elder' && (
+          {/* Elder / Owner Panels */}
+          {(memberData?.role === 'elder' || memberData?.role === 'owner') && (
             <>
               <div className="elder-panel" style={{ marginBottom: '12px', background: 'var(--text-2)' }}>
                 <span className="elder-panel__icon" aria-hidden="true"><Landmark size={16} /></span>
@@ -595,6 +649,26 @@ export default function DashboardTestPage() {
                   <div className="elder-panel__msg">Approve or reject new arrivals to your cooperative.</div>
                 </div>
                 <button className="elder-panel__cta" onClick={openPendingMemberModal}>Review Now</button>
+              </div>
+              <div className="elder-panel" style={{ marginBottom: '12px', background: 'var(--text-2)' }}>
+                <span className="elder-panel__icon" aria-hidden="true"><Shield size={16} /></span>
+                <div className="elder-panel__body">
+                  <div className="elder-panel__head">Treasury Reconciliation</div>
+                  <div className="elder-panel__msg">Propose or approve manual balance updates with multi-sig security.</div>
+                </div>
+                <button className="elder-panel__cta" onClick={async () => {
+                  if (!address) return;
+                  try {
+                    const res = await fetch(`/api/treasury/reconciliation/pending?address=${address}`, {
+                      headers: { 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' }
+                    });
+                    if (res.ok) {
+                      const data = await res.json();
+                      setReconList(data.reconciliations || []);
+                    }
+                  } catch (err) { console.error(err); }
+                  setReconModalOpen(true);
+                }}>Review Now</button>
               </div>
             </>
           )}
@@ -627,6 +701,42 @@ export default function DashboardTestPage() {
               <div className="stat-card__label">Active Community Loans</div>
               <div className="stat-card__value stat-card__value--lg">{communityStats.activeLoanCount}</div>
               <div className="stat-card__sub">{communityStats.treasuryLoanCount} treasury · {communityStats.peerLoanCount} member-to-member</div>
+            </div>
+          </div>
+
+          {/* --- NETWORK QUEUE --- */}
+          <div className="network-queue">
+            <div className="network-queue__head">
+              <div>
+                <h3 className="network-queue__title"><Layers size={16} /> Network Queue</h3>
+                <div className="network-queue__sub">Pending receipts waiting to be batched and etched on-chain</div>
+              </div>
+              <span className="network-queue__badge"><Clock size={11} /> Next batch in ~4 min</span>
+            </div>
+            <div className="network-queue__items">
+              {queueItems.map((item) => (
+                <div key={item.id} className={`nq-item nq-item--${item.status === 'etching' ? 'batched' : item.status}`}>
+                  <div className="nq-item__dot"></div>
+                  <div className="nq-item__body">
+                    <span className="nq-item__label">{item.label}</span>
+                    <span className="nq-item__meta">{item.meta}</span>
+                  </div>
+                  {item.status === 'queued' && <span className="nq-item__status">Queued</span>}
+                  {item.status === 'etching' && (
+                    <span className="nq-item__status nq-item__status--active">
+                      <span className="nq-spinner"></span> Etching
+                    </span>
+                  )}
+                  {item.status === 'done' && (
+                    <span className="nq-item__status nq-item__status--done">
+                      <Check size={12} /> Etched
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="network-queue__footer">
+              <span>Cardano batches minimize fees · 16KB overflow handled automatically</span>
             </div>
           </div>
 
@@ -806,6 +916,17 @@ export default function DashboardTestPage() {
                     />
                     <span className="field__hint">Elders read this when reviewing your request. Keep it clear and concise.</span>
                   </div>
+
+                  <div className="field" style={{ marginBottom: '4px' }}>
+                    <label className="field__label">Collateral Declaration</label>
+                    <input 
+                      className="input" 
+                      type="text"
+                      placeholder="e.g. Samsung Galaxy S24, Honda Click 125i, Laptop…"
+                      value={tCollateral} onChange={e => setTCollateral(e.target.value)}
+                    />
+                    <span className="field__hint">Declare a real-world asset as collateral. This will be permanently recorded on the blockchain.</span>
+                  </div>
                 </section>
               )}
 
@@ -847,7 +968,7 @@ export default function DashboardTestPage() {
                       <div className="schedule__rows">
                         <div className="schedule__row"><span>First payment</span><span>{s.numPayments > 0 ? fmtDate(s.first) : '—'}</span></div>
                         <div className="schedule__row"><span>Loan paid off</span><span>{s.numPayments > 0 ? fmtDate(s.end) : '—'}</span></div>
-                        <div className="schedule__row"><span>Interest rate</span><span>0% — Community</span></div>
+                        <div className="schedule__row"><span>Interest rate</span><span>1% — Community</span></div>
                         <div className="schedule__row"><span>Total to repay</span><span>{fmtPeso(s.total)}</span></div>
                       </div>
                     </div>
@@ -869,6 +990,10 @@ export default function DashboardTestPage() {
                       <div className="summary-row summary-row--multiline">
                         <span className="summary-row__label">Purpose</span>
                         <span className="summary-row__value">{tPurpose || '—'}</span>
+                      </div>
+                      <div className="summary-row summary-row--multiline">
+                        <span className="summary-row__label">Collateral</span>
+                        <span className="summary-row__value" style={{ color: 'var(--status-green)', fontWeight: 700 }}>{tCollateral || '—'}</span>
                       </div>
                       <div className="summary-row">
                         <span className="summary-row__label">Term &amp; frequency</span>
@@ -921,7 +1046,7 @@ export default function DashboardTestPage() {
                 <button 
                   className="btn btn-primary loan-modal__continue" 
                   disabled={
-                    (treasuryModal.step === 1 && (tAmount <= 0 || tAmount > communityStats.treasuryBalance || tPurpose.trim().length < 5)) ||
+                    (treasuryModal.step === 1 && (tAmount <= 0 || tAmount > communityStats.treasuryBalance || tPurpose.trim().length < 5 || tCollateral.trim().length < 3)) ||
                     (treasuryModal.step === 2 && false) ||
                     (treasuryModal.step === 3 && !tAccepted)
                   }
@@ -1425,6 +1550,68 @@ export default function DashboardTestPage() {
         </div>
       )}
 
+      {/* --- PENDING MEMBERS MODAL --- */}
+      {pendingMemberModalOpen && (
+        <div className="loan-modal is-open">
+          <div className="loan-modal__backdrop" onClick={() => setPendingMemberModalOpen(false)}></div>
+          <div className="loan-modal__dialog">
+            <header className="loan-modal__header">
+              <div className="elder-modal__title-block">
+                <span className="elder-modal__title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Users size={18} /> New Member Requests
+                </span>
+                <span className="elder-modal__sub">Review and approve new registrations to your community.</span>
+              </div>
+              <button className="loan-modal__close" onClick={() => setPendingMemberModalOpen(false)}><X size={14} /></button>
+            </header>
+
+            <div className="loan-modal__body" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
+              <div className="pending-list">
+                {pendingMembers.map((member: any) => (
+                  <div key={member.wallet_address} className="pending-card">
+                    <div className="pending-card__top">
+                      <div className="pending-card__requester">
+                        <div className="pending-card__avatar">{(member.alias || '??').slice(0, 2).toUpperCase()}</div>
+                        <div>
+                          <div className="pending-card__rname">{member.alias}</div>
+                          <div className="pending-card__rmeta">
+                            <span>{member.wallet_address.slice(0, 10)}...{member.wallet_address.slice(-6)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pending-card__details">
+                      <div><span className="pending-card__detail-label">Email</span><span className="pending-card__detail-value">{member.email || 'N/A'}</span></div>
+                      <div><span className="pending-card__detail-label">Barangay</span><span className="pending-card__detail-value">{member.barangay || 'N/A'}</span></div>
+                      <div><span className="pending-card__detail-label">Gov ID #</span><span className="pending-card__detail-value" style={{ fontFamily: 'monospace' }}>{/* For future ID rendering */ 'Verified via Form'}</span></div>
+                      <div><span className="pending-card__detail-label">Date Joined</span><span className="pending-card__detail-value">{new Date(member.created_at).toLocaleDateString()}</span></div>
+                    </div>
+
+                    <div className="pending-card__actions">
+                      <button className="btn-reject" onClick={() => respondToMember(member.wallet_address, 'rejected')}>
+                        <X size={14} strokeWidth={2.2} /> Reject
+                      </button>
+                      <button className="btn-approve" onClick={() => respondToMember(member.wallet_address, 'approved')}>
+                        <Check size={14} strokeWidth={2.2} /> Approve
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {pendingMembers.length === 0 && (
+                <div className="elder-empty is-visible">
+                  <div className="elder-empty__icon"><Check size={22} strokeWidth={2.5} /></div>
+                  <div className="elder-empty__title">All Caught Up</div>
+                  <div className="elder-empty__sub">There are no pending registrations for your community right now.</div>
+                  <button className="elder-empty__close" onClick={() => setPendingMemberModalOpen(false)}>Close</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* --- TRANSACTION RECEIPT MODAL --- */}
       {txModal.isOpen && txModal.txKey && (() => {
@@ -1541,6 +1728,137 @@ export default function DashboardTestPage() {
           </div>
         );
       })()}
+
+      {/* --- RECONCILIATION MODAL --- */}
+      {reconModalOpen && (
+        <div className="loan-modal is-open">
+          <div className="loan-modal__backdrop" onClick={() => { setReconModalOpen(false); setReconProposing(false); }}></div>
+          <div className="loan-modal__dialog">
+            <header className="loan-modal__header">
+              <div className="elder-modal__title-block">
+                <span className="elder-modal__title"><Shield size={18} /> Treasury Reconciliation</span>
+                <span className="elder-modal__sub">Propose or approve manual balance updates</span>
+              </div>
+              <button className="loan-modal__close" onClick={() => { setReconModalOpen(false); setReconProposing(false); }}><X size={14} /></button>
+            </header>
+
+            <div className="loan-modal__body" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
+              {!reconProposing ? (
+                <>
+                  <button className="btn btn-primary" style={{ width: '100%', marginBottom: '18px' }} onClick={() => setReconProposing(true)}>
+                    <Shield size={14} /> Propose Balance Update
+                  </button>
+
+                  {reconList.length === 0 && (
+                    <div className="elder-empty is-visible">
+                      <div className="elder-empty__icon"><Check size={22} /></div>
+                      <div className="elder-empty__title">All Clear</div>
+                      <div className="elder-empty__sub">No pending reconciliations in your community.</div>
+                    </div>
+                  )}
+
+                  {reconList.map((r: any) => (
+                    <div key={r.reconciliation_id} className={`pending-card ${r.status === 'approved' ? 'is-approved' : r.status === 'rejected' ? 'is-rejected' : ''}`} style={{ marginBottom: '12px' }}>
+                      <div className="pending-card__top">
+                        <div className="pending-card__requester">
+                          <div className="pending-card__avatar">{(r.proposer?.alias || '??').slice(0, 2).toUpperCase()}</div>
+                          <div>
+                            <div className="pending-card__rname">{r.proposer?.alias || 'Unknown'}</div>
+                            <div className="pending-card__rmeta">
+                              <span>{r.reason}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="pending-card__amount">
+                          <div style={{ fontSize: '13px', color: 'var(--text-3)' }}>Previous</div>
+                          <div style={{ fontSize: '16px', fontWeight: 600 }}>{fmtPesoShort(r.previous_balance)}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '4px' }}>Proposed</div>
+                          <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--status-green)' }}>{fmtPesoShort(r.proposed_balance)}</div>
+                        </div>
+                      </div>
+                      <div className="pending-card__details">
+                        <div><span className="pending-card__detail-label">Status</span><span className="pending-card__detail-value" style={{ textTransform: 'capitalize' }}>{r.status}</span></div>
+                        <div><span className="pending-card__detail-label">Sigs Required</span><span className="pending-card__detail-value">{r.sigs_required}</span></div>
+                        <div><span className="pending-card__detail-label">Approvals</span><span className="pending-card__detail-value">{(r.signatures || []).filter((s: any) => s.decision === 'approve').length}</span></div>
+                        <div><span className="pending-card__detail-label">Created</span><span className="pending-card__detail-value">{new Date(r.created_at).toLocaleDateString()}</span></div>
+                      </div>
+                      {r.status === 'pending' && r.proposed_by !== address && (
+                        <div className="pending-card__actions">
+                          <button className="btn-reject" onClick={async () => {
+                            const res = await fetch('/api/treasury/reconciliation/sign', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' },
+                              body: JSON.stringify({ elderAddress: address, reconciliationId: r.reconciliation_id, decision: 'reject' })
+                            });
+                            if (res.ok) { setReconList(prev => prev.map(x => x.reconciliation_id === r.reconciliation_id ? { ...x, status: 'rejected' } : x)); }
+                          }}><X size={14} /> Reject</button>
+                          <button className="btn-approve" onClick={async () => {
+                            const res = await fetch('/api/treasury/reconciliation/sign', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' },
+                              body: JSON.stringify({ elderAddress: address, reconciliationId: r.reconciliation_id, decision: 'approve' })
+                            });
+                            const data = await res.json();
+                            if (res.ok) {
+                              setReconList(prev => prev.map(x => x.reconciliation_id === r.reconciliation_id ? { ...x, status: data.outcome || 'pending' } : x));
+                              if (data.resolved) {
+                                // Refresh community stats
+                                fetch(`/api/community/stats?address=${address}`, { headers: { 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' } })
+                                  .then(r => r.json()).then(d => { if (d.treasuryBalance !== undefined) setCommunityStats(d); }).catch(console.error);
+                              }
+                            } else { alert(data.error || 'Failed to sign'); }
+                          }}><Check size={14} /> Approve</button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <section className="loan-step is-active">
+                  <h2 className="loan-step__title">Propose Balance Update</h2>
+                  <p className="loan-step__sub">This will require approval from another Elder before the treasury balance is updated.</p>
+
+                  <div className="field" style={{ marginBottom: '14px' }}>
+                    <label className="field__label">Proposed Balance (₱)</label>
+                    <input className="input" type="number" min="0" step="100" placeholder="Enter the real-world balance…" value={reconBalance} onChange={e => setReconBalance(e.target.value)} />
+                  </div>
+
+                  <div className="field" style={{ marginBottom: '14px' }}>
+                    <label className="field__label">Reason</label>
+                    <textarea className="input input--purpose" placeholder="Why does the balance need updating?" value={reconReason} onChange={e => setReconReason(e.target.value)} />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="btn-reject" style={{ flex: 1 }} onClick={() => setReconProposing(false)}>
+                      Cancel
+                    </button>
+                    <button className="btn-approve" style={{ flex: 1 }} disabled={!reconBalance || !reconReason.trim()} onClick={async () => {
+                      const res = await fetch('/api/treasury/reconciliation/propose', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' },
+                        body: JSON.stringify({ elderAddress: address, proposedBalance: Number(reconBalance), reason: reconReason })
+                      });
+                      const data = await res.json();
+                      if (res.ok) {
+                        setReconProposing(false);
+                        setReconBalance('');
+                        setReconReason('');
+                        // Re-fetch reconciliations
+                        const listRes = await fetch(`/api/treasury/reconciliation/pending?address=${address}`, {
+                          headers: { 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' }
+                        });
+                        if (listRes.ok) { const d = await listRes.json(); setReconList(d.reconciliations || []); }
+                      } else { alert(data.error || 'Failed to propose reconciliation'); }
+                    }}>
+                      <ShieldCheck size={14} /> Submit Proposal
+                    </button>
+                  </div>
+                </section>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
     </>
   );
@@ -2540,6 +2858,30 @@ const CUSTOM_CSS = `
   .tx-cardanoscan { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 13px 18px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600; transition: border-color 160ms, transform 160ms; }
   .tx-cardanoscan:hover { border-color: var(--text); background: var(--surface-2); transform: translateY(-1px); }
 
+  /* ===== NETWORK QUEUE ===== */
+  .network-queue { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; margin-bottom: 20px; overflow: hidden; }
+  .network-queue__head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px 14px; gap: 12px; flex-wrap: wrap; }
+  .network-queue__title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; color: var(--text); margin: 0; letter-spacing: -0.015em; }
+  .network-queue__sub { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+  .network-queue__badge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 999px; background: rgba(22, 163, 74, 0.08); border: 1px solid rgba(22, 163, 74, 0.20); color: var(--status-green); font-size: 11.5px; font-weight: 600; }
+  .network-queue__items { padding: 0 22px 14px; display: flex; flex-direction: column; gap: 0; }
+  .nq-item { display: flex; align-items: center; gap: 14px; padding: 13px 0; border-bottom: 1px solid var(--border); }
+  .nq-item:last-child { border-bottom: 0; }
+  .nq-item__dot { width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0; }
+  .nq-item--pending .nq-item__dot { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15); }
+  .nq-item--batched .nq-item__dot { background: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); animation: pulse-dot 1.5s ease infinite; }
+  .nq-item--done .nq-item__dot { background: var(--status-green); box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15); }
+  @keyframes pulse-dot { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.3); } }
+  .nq-item__body { flex: 1; min-width: 0; }
+  .nq-item__label { display: block; font-size: 13px; font-weight: 600; color: var(--text); }
+  .nq-item__meta { display: block; font-size: 11.5px; color: var(--text-2); margin-top: 1px; }
+  .nq-item__status { font-size: 11.5px; font-weight: 600; color: var(--text-3); flex-shrink: 0; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); }
+  .nq-item__status--active { color: #3b82f6; background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.25); display: inline-flex; align-items: center; gap: 6px; }
+  .nq-item__status--done { color: var(--status-green); background: var(--status-green-bg); border-color: var(--status-green-border); display: inline-flex; align-items: center; gap: 4px; }
+  .nq-spinner { width: 10px; height: 10px; border: 2px solid rgba(59, 130, 246, 0.25); border-top-color: #3b82f6; border-radius: 999px; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .network-queue__footer { padding: 10px 22px; background: var(--surface-2); border-top: 1px solid var(--border); font-size: 11px; color: var(--text-3); text-align: center; }
+
   @media (max-width: 900px) {
     .topbar { padding: 14px 18px; gap: 12px; flex-wrap: wrap; }
     .vault-hero { grid-template-columns: 1fr; }
@@ -2565,5 +2907,6 @@ const CUSTOM_CSS = `
     .amount-input { font-size: 40px; width: 200px; }
     .tx-parties { grid-template-columns: 1fr; gap: 16px; }
     .tx-arrow { padding-top: 0; transform: rotate(90deg); }
+    .network-queue__head { flex-direction: column; align-items: flex-start; }
   }
 `;
