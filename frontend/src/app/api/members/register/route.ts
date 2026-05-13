@@ -13,6 +13,7 @@ export async function POST(request: Request) {
         const { walletAddress, alias, communityId, barangay, email } = await request.json();
 
         // Validate inputs
+        console.log('REGISTER DEBUG:', { walletAddress, alias, communityId, barangay, email });
         if (!walletAddress || !alias || !communityId || !email) {
             return NextResponse.json({ error: 'Wallet address, alias, community, and email are required' }, { status: 400 });
         }

@@ -26,8 +26,8 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Could not verify elder status' }, { status: 500 });
         }
 
-        if (elderData.role !== 'elder') {
-            return NextResponse.json({ error: 'Forbidden. Only elders can view pending members.' }, { status: 403 });
+        if (!['elder', 'owner'].includes(elderData.role)) {
+            return NextResponse.json({ error: 'Forbidden. Only elders and owners can view pending members.' }, { status: 403 });
         }
 
         // Fetch pending members for that community

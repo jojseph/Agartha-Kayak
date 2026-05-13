@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     }
 
     try {
-        const { borrowerAddress, amount, purpose, termMonths, repaymentFrequency } = await request.json();
+        const { borrowerAddress, amount, purpose, termMonths, repaymentFrequency, collateral } = await request.json();
 
         if (!borrowerAddress || !amount || !purpose) {
             return NextResponse.json({ error: 'Missing required fields: borrowerAddress, amount, purpose' }, { status: 400 });
@@ -20,6 +20,11 @@ export async function POST(request: Request) {
 
         if (purpose.trim().length < 5) {
             return NextResponse.json({ error: 'Purpose must be at least 5 characters' }, { status: 400 });
+        }
+
+        // Collateral declaration is required for treasury loans
+        if (!collateral || collateral.trim().length < 3) {
+            return NextResponse.json({ error: 'Collateral declaration is required (e.g. "Samsung Galaxy S24", "Honda Click 125i")' }, { status: 400 });
         }
 
         // Verify borrower exists and get their community
@@ -66,6 +71,7 @@ export async function POST(request: Request) {
                     purpose: purpose.trim(),
                     term_months: termMonths || null,
                     repayment_frequency: repaymentFrequency || null,
+                    collateral: collateral.trim(),
                     status: 'pending',
                     sigs_required: 2,
                 },
