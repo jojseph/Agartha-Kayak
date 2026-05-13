@@ -31,7 +31,7 @@ export async function POST(request: Request) {
                     lender_address: lenderAddress,
                     loan_type: 'peer',
                     mode: mode,
-                    amount: mode === 'money' ? amount : null,
+                    amount: mode === 'money' ? amount : 0,
                     item_name: mode === 'things' ? itemName : null,
                     currency: 'PHP',
                     purpose: purpose,

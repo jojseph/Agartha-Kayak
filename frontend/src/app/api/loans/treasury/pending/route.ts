@@ -26,8 +26,8 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Member not found' }, { status: 404 });
         }
 
-        if (elder.role !== 'elder') {
-            return NextResponse.json({ error: 'Only elders can view treasury loan requests' }, { status: 403 });
+        if (elder.role !== 'elder' && elder.role !== 'owner') {
+            return NextResponse.json({ error: 'Only elders or owners can view treasury loan requests' }, { status: 403 });
         }
 
         if (!elder.community_id) {
