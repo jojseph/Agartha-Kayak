@@ -1,0 +1,250 @@
+﻿
+> frontend@0.1.0 build
+> next build
+
+  Γû▓ Next.js 14.2.35
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+node.exe :  ΓÜá Compiled with warnings
+At C:\Program Files\nodejs\npm.ps1:29 char:3
++   & $NODE_EXE $NPM_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( ΓÜá Compiled with warnings:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+./node_modules/@protobufjs/inquire/index.js
+Critical dependency: the request of a dependency is an expression
+
+Import trace for requested module:
+./node_modules/@protobufjs/inquire/index.js
+./node_modules/protobufjs/src/util/minimal.js
+./node_modules/protobufjs/src/index-minimal.js
+./node_modules/protobufjs/src/index-light.js
+./node_modules/protobufjs/src/index.js
+./node_modules/protobufjs/index.js
+./node_modules/@grpc/proto-loader/build/src/index.js
+./node_modules/@grpc/grpc-js/build/src/channelz.js
+./node_modules/@grpc/grpc-js/build/src/index.js
+./node_modules/nice-grpc/lib/index.js
+./node_modules/@meshsdk/react/node_modules/@utxos/sdk/node_modules/@buildonspark/spark-sdk/dist/chunk-RU434ZAE.js
+./node_modules/@meshsdk/react/node_modules/@utxos/sdk/node_modules/@buildonspark/spark-sdk/dist/index.node.js
+./node_modules/@meshsdk/react/node_modules/@utxos/sdk/dist/chunk-F7KNRV75.js
+./node_modules/@meshsdk/react/node_modules/@utxos/sdk/dist/index.js
+./node_modules/@meshsdk/react/dist/index.js
+./src/app/dashboardTest/page.tsx
+
+./node_modules/require-in-the-middle/index.js
+Critical dependency: require function is used in a way in which dependencies cannot be statically extracted
+
+Import trace for requested module:
+./node_modules/require-in-the-middle/index.js
+./node_modules/@opentelemetry/instrumentation/build/esm/platform/node/instrumentation.js
+./node_modules/@opentelemetry/instrumentation/build/esm/platform/node/index.js
+./node_modules/@opentelemetry/instrumentation/build/esm/platform/index.js
+./node_modules/@opentelemetry/instrumentation/build/esm/index.js
+./node_modules/@meshsdk/react/node_modules/@utxos/sdk/node_modules/@buildonspark/spark-sdk/dist/chunk-RU434ZAE.js
+./node_modules/@meshsdk/react/node_modules/@utxos/sdk/node_modules/@buildonspark/spark-sdk/dist/index.node.js
+./node_modules/@meshsdk/react/node_modules/@utxos/sdk/dist/chunk-F7KNRV75.js
+./node_modules/@meshsdk/react/node_modules/@utxos/sdk/dist/index.js
+./node_modules/@meshsdk/react/dist/index.js
+./src/app/dashboardTest/page.tsx
+
+   Linting and checking validity of types ...
+
+Failed to compile.
+
+./src/app/(marketing)/faq/page.tsx
+125:120  Error: `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.  react/no-unescaped-entities
+169:108  Error: `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.  react/no-unescaped-entities
+
+./src/app/Admin/page.tsx
+10:52  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+11:44  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+81:18  Warning: 'error' is defined but never used.  @typescript-eslint/no-unused-vars
+108:18  Warning: 'error' is defined but never used.  @typescript-eslint/no-unused-vars
+136:18  Warning: 'error' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/api/community/stats/route.ts
+48:66  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+80:19  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/loans/check-overdue/route.ts
+33:24  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+44:34  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+93:19  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/loans/peer/request/route.ts
+56:19  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/loans/peer/route.ts
+24:21  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+27:25  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+55:21  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+63:27  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+97:19  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/loans/repayment/confirm/route.ts
+52:54  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+76:44  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+85:78  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+176:19  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/loans/repayment/history/route.ts
+47:67  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+48:76  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+49:65  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+50:72  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+69:19  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/loans/repayment/submit/route.ts
+43:51  Warning: 'repaymentError' is assigned a value but never used. Allowed unused vars must match /^_/u.  
+@typescript-eslint/no-unused-vars
+49:81  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+85:19  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/loans/requests/route.ts
+5:11  Warning: 'authHeader' is assigned a value but never used. Allowed unused vars must match /^_/u.  
+@typescript-eslint/no-unused-vars
+32:14  Warning: 'err' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/api/loans/respond/route.ts
+11:33  Warning: 'reason' is assigned a value but never used. Allowed unused vars must match /^_/u.  
+@typescript-eslint/no-unused-vars
+55:19  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/loans/route.ts
+5:27  Warning: 'request' is defined but never used. Allowed unused args must match /^_/u.  
+@typescript-eslint/no-unused-vars
+32:16  Warning: 'data' is assigned a value but never used. Allowed unused vars must match /^_/u.  
+@typescript-eslint/no-unused-vars
+46:14  Warning: 'err' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/api/loans/treasury/pending/route.ts
+56:20  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+60:48  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+61:20  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+71:57  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/loans/treasury/request/route.ts
+91:19  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/loans/treasury/vote/route.ts
+55:55  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+166:19  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/loans/user/route.ts
+30:14  Warning: 'err' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/api/members/approve/route.ts
+83:14  Warning: 'err' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/api/members/pending/route.ts
+47:14  Warning: 'err' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/api/members/route.ts
+4:27  Warning: 'request' is defined but never used. Allowed unused args must match /^_/u.  
+@typescript-eslint/no-unused-vars
+37:14  Warning: 'error' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/api/members/search/route.ts
+5:11  Warning: 'authHeader' is assigned a value but never used. Allowed unused vars must match /^_/u.  
+@typescript-eslint/no-unused-vars
+17:40  Warning: 'userError' is assigned a value but never used. Allowed unused vars must match /^_/u.  
+@typescript-eslint/no-unused-vars
+53:14  Warning: 'err' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/api/treasury/reconciliation/pending/route.ts
+47:19  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/treasury/reconciliation/propose/route.ts
+72:19  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/api/treasury/reconciliation/sign/route.ts
+153:19  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/dashboardTest/DashboardViews.tsx
+209:61  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+210:61  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+214:71  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+298:19  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+383:117  Error: `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.  react/no-unescaped-entities
+400:43  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+467:145  Error: `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.  react/no-unescaped-entities
+491:39  Error: React Hook "useState" is called in function "memberSearchHook" that is neither a React function 
+component nor a custom React Hook function. React component names must start with an uppercase letter. React Hook 
+names must start with the word "use".  react-hooks/rules-of-hooks
+492:45  Error: React Hook "useState" is called in function "memberSearchHook" that is neither a React function 
+component nor a custom React Hook function. React component names must start with an uppercase letter. React Hook 
+names must start with the word "use".  react-hooks/rules-of-hooks
+492:54  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+493:47  Error: React Hook "useState" is called in function "memberSearchHook" that is neither a React function 
+component nor a custom React Hook function. React component names must start with an uppercase letter. React Hook 
+names must start with the word "use".  react-hooks/rules-of-hooks
+493:56  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+494:41  Error: React Hook "useState" is called in function "memberSearchHook" that is neither a React function 
+component nor a custom React Hook function. React component names must start with an uppercase letter. React Hook 
+names must start with the word "use".  react-hooks/rules-of-hooks
+496:3  Error: React Hook "useEffect" is called in function "memberSearchHook" that is neither a React function 
+component nor a custom React Hook function. React component names must start with an uppercase letter. React Hook 
+names must start with the word "use".  react-hooks/rules-of-hooks
+520:6  Warning: React Hook useEffect has a missing dependency: 'address'. Either include it or remove the dependency 
+array.  react-hooks/exhaustive-deps
+528:38  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/dashboardTest/page.tsx
+3:38  Warning: 'useMemo' is defined but never used. Allowed unused vars must match /^_/u.  
+@typescript-eslint/no-unused-vars
+258:48  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+286:10  Warning: 'pendingMemberModalOpen' is assigned a value but never used. Allowed unused vars must match /^_/u.  
+@typescript-eslint/no-unused-vars
+302:10  Warning: 'pendingMembers' is assigned a value but never used. Allowed unused vars must match /^_/u.  
+@typescript-eslint/no-unused-vars
+309:46  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+472:56  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+489:64  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+543:9  Warning: 'respondToMember' is assigned a value but never used. Allowed unused vars must match /^_/u.  
+@typescript-eslint/no-unused-vars
+719:79  Error: `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.  react/no-unescaped-entities
+852:76  Error: `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.  react/no-unescaped-entities
+1000:114  Error: `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.  react/no-unescaped-entities
+1165:51  Error: `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.  react/no-unescaped-entities
+1220:56  Error: `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.  react/no-unescaped-entities
+1220:123  Error: `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.  react/no-unescaped-entities
+1669:38  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+1691:169  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/layout.tsx
+4:10  Warning: 'Providers' is defined but never used. Allowed unused vars must match /^_/u.  
+@typescript-eslint/no-unused-vars
+
+./src/app/walletAuthTest/page.tsx
+15:48  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+21:50  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+40:17  Warning: 'err' is defined but never used. Allowed unused args must match /^_/u.  
+@typescript-eslint/no-unused-vars
+50:6  Warning: React Hook useEffect has a missing dependency: 'checkLedger'. Either include it or remove the 
+dependency array.  react-hooks/exhaustive-deps
+80:14  Warning: 'err' is defined but never used.  @typescript-eslint/no-unused-vars
+113:14  Warning: 'err' is defined but never used.  @typescript-eslint/no-unused-vars
+146:14  Warning: 'error' is defined but never used.  @typescript-eslint/no-unused-vars
+164:11  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from 
+`next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: 
+https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+464:17  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from 
+`next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: 
+https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+490:17  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from 
+`next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: 
+https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+496:19  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from 
+`next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: 
+https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/components/NetworkSelectModal.tsx
+136:9  Warning: 'totalSteps' is assigned a value but never used. Allowed unused vars must match /^_/u.  
+@typescript-eslint/no-unused-vars
+
+info  - Need to disable some ESLint rules? Learn more here: 
+https://nextjs.org/docs/basic-features/eslint#disabling-rules

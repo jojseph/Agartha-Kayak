@@ -1,0 +1,97 @@
+import { NextResponse } from 'next/server';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
+
+// POST: Scan all active/approved loans and flag overdue ones + apply penalty interest
+// This can be called on a schedule (cron) or triggered manually by an Elder/Owner
+export async function POST(request: Request) {
+    const authHeader = request.headers.get('Authorization');
+    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    try {
+        const now = new Date();
+        const PENALTY_RATE = 0.02; // 2% penalty interest on overdue balance per month
+
+        // Find all loans that have a needed_by_date in the past and are still active/approved
+        const { data: loans, error: loanError } = await supabaseAdmin
+            .from('loans')
+            .select('loan_id, amount, interest_rate, needed_by_date, status, borrower_address, loan_type')
+            .in('status', ['active', 'approved'])
+            .not('needed_by_date', 'is', null)
+            .lt('needed_by_date', now.toISOString().split('T')[0]); // past due
+
+        if (loanError) {
+            console.error('Fetch overdue loans error:', loanError);
+            return NextResponse.json({ error: 'Failed to query loans' }, { status: 500 });
+        }
+
+        if (!loans || loans.length === 0) {
+            return NextResponse.json({ success: true, message: 'No overdue loans found', flagged: 0 });
+        }
+
+        const results: any[] = [];
+
+        for (const loan of loans) {
+            // Calculate how much has been confirmed-repaid
+            const { data: confirmedRepayments } = await supabaseAdmin
+                .from('repayments')
+                .select('amount')
+                .eq('loan_id', loan.loan_id)
+                .eq('status', 'confirmed');
+
+            const totalRepaid = (confirmedRepayments || []).reduce(
+                (sum: number, r: any) => sum + Number(r.amount), 0
+            );
+
+            // If fully repaid, skip (shouldn't be active but just in case)
+            if (totalRepaid >= Number(loan.amount)) {
+                continue;
+            }
+
+            // Calculate penalty: remaining balance * penalty rate
+            const remainingBalance = Number(loan.amount) - totalRepaid;
+            const dueDate = new Date(loan.needed_by_date);
+            const monthsOverdue = Math.max(1, Math.ceil(
+                (now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24 * 30)
+            ));
+            const penaltyAmount = remainingBalance * PENALTY_RATE * monthsOverdue;
+
+            // Update loan status to 'overdue' and add penalty to the loan amount
+            const newAmount = Number(loan.amount) + penaltyAmount;
+            const { error: updateError } = await supabaseAdmin
+                .from('loans')
+                .update({
+                    status: 'overdue',
+                    amount: newAmount,
+                })
+                .eq('loan_id', loan.loan_id);
+
+            if (updateError) {
+                console.error(`Failed to flag loan ${loan.loan_id}:`, updateError);
+                results.push({ loan_id: loan.loan_id, status: 'error', error: updateError.message });
+            } else {
+                results.push({
+                    loan_id: loan.loan_id,
+                    status: 'flagged_overdue',
+                    borrower: loan.borrower_address,
+                    originalAmount: loan.amount,
+                    penaltyApplied: penaltyAmount,
+                    newAmount,
+                    monthsOverdue,
+                    dueDate: loan.needed_by_date,
+                });
+            }
+        }
+
+        return NextResponse.json({
+            success: true,
+            message: `Processed ${results.length} overdue loan(s)`,
+            flagged: results.length,
+            results,
+        });
+    } catch (err: any) {
+        console.error('Server error checking overdue loans:', err);
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
+}
