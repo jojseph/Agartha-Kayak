@@ -295,6 +295,13 @@ export default function DashboardTestPage() {
     peerLoanCount: 0,
   });
 
+  const [pendingCounts, setPendingCounts] = useState({
+    treasuryLoans: 0,
+    newMembers: 0,
+    reconciliations: 0,
+    memberRequests: 0,
+  });
+
   // Treasury elder requests
   const [treasuryElderRequests, setTreasuryElderRequests] = useState<TreasuryElderRequest[]>([]);
 
@@ -390,6 +397,20 @@ export default function DashboardTestPage() {
               peerLoanCount: d.peerLoanCount,
             });
           }
+        })
+        .catch(console.error);
+    }
+  }, [address]);
+
+  // Fetch pending counts for elder/member alerts
+  useEffect(() => {
+    if (address) {
+      fetch(`/api/dashboard/pending-counts?address=${address}`, {
+        headers: { 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' }
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (d.counts) setPendingCounts(d.counts);
         })
         .catch(console.error);
     }
@@ -637,7 +658,12 @@ export default function DashboardTestPage() {
                 <span className="elder-panel__icon" aria-hidden="true"><Landmark size={16} /></span>
                 <div className="elder-panel__body">
                   <div className="elder-panel__head">Treasury Requests</div>
-                  <div className="elder-panel__msg">Pending treasury loan requests in your community.</div>
+                  <div className="elder-panel__msg">
+                    {pendingCounts.treasuryLoans > 0 
+                      ? <>You have <strong>{pendingCounts.treasuryLoans}</strong> pending treasury loan requests to review.</>
+                      : <>Pending treasury loan requests in your community.</>
+                    }
+                  </div>
                 </div>
                 <button className="elder-panel__cta" onClick={openTreasuryElderModal}>Review Now</button>
               </div>
@@ -646,7 +672,12 @@ export default function DashboardTestPage() {
                 <span className="elder-panel__icon" aria-hidden="true"><Users size={16} /></span>
                 <div className="elder-panel__body">
                   <div className="elder-panel__head">New Member Requests</div>
-                  <div className="elder-panel__msg">Approve or reject new arrivals to your cooperative.</div>
+                  <div className="elder-panel__msg">
+                    {pendingCounts.newMembers > 0
+                      ? <>You have <strong>{pendingCounts.newMembers}</strong> new arrivals awaiting your approval.</>
+                      : <>Approve or reject new arrivals to your cooperative.</>
+                    }
+                  </div>
                 </div>
                 <button className="elder-panel__cta" onClick={openPendingMemberModal}>Review Now</button>
               </div>
@@ -654,7 +685,12 @@ export default function DashboardTestPage() {
                 <span className="elder-panel__icon" aria-hidden="true"><Shield size={16} /></span>
                 <div className="elder-panel__body">
                   <div className="elder-panel__head">Treasury Reconciliation</div>
-                  <div className="elder-panel__msg">Propose or approve manual balance updates with multi-sig security.</div>
+                  <div className="elder-panel__msg">
+                    {pendingCounts.reconciliations > 0
+                      ? <>There are <strong>{pendingCounts.reconciliations}</strong> reconciliations needing signatures.</>
+                      : <>Propose or approve manual balance updates with multi-sig security.</>
+                    }
+                  </div>
                 </div>
                 <button className="elder-panel__cta" onClick={async () => {
                   if (!address) return;
@@ -677,7 +713,7 @@ export default function DashboardTestPage() {
             <span className="elder-panel__icon" aria-hidden="true"><HandCoins size={16} /></span>
             <div className="elder-panel__body">
               <div className="elder-panel__head">Member Requests</div>
-              <div className="elder-panel__msg">You have <strong>{elderRequests.filter(r => r.status === 'pending').length}</strong> neighbors requesting to borrow from you.</div>
+              <div className="elder-panel__msg">You have <strong>{pendingCounts.memberRequests}</strong> neighbors requesting to borrow from you.</div>
             </div>
             <button className="elder-panel__cta" onClick={openElderModal}>Review Now</button>
           </div>
@@ -1292,7 +1328,7 @@ export default function DashboardTestPage() {
             <header className="loan-modal__header">
               <div className="elder-modal__title-block">
                 <div className="elder-modal__title">Treasury Requests</div>
-                <div className="elder-modal__sub"><strong>{treasuryElderRequests.filter(r => r.status === 'pending').length}</strong> awaiting review in your community</div>
+                <div className="elder-modal__sub"><strong>{treasuryElderRequests.filter(r => r.status === 'pending' && !r.my_vote).length}</strong> awaiting your review in your community</div>
               </div>
               <button className="loan-modal__close" onClick={() => setTreasuryElderModalOpen(false)}><X size={14} /></button>
             </header>
