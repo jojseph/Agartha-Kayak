@@ -23,8 +23,32 @@ import {
   ArrowUpRight,
   Shield,
   Clock,
-  Layers
+  Layers,
+  Activity,
+  Database
 } from 'lucide-react';
+
+// --- Queue Types ---
+interface QueueItem {
+  queue_id: string;
+  record_type: string;
+  summary: string;
+  estimated_bytes: number;
+  status: 'queued' | 'batched' | 'etched' | 'failed';
+  member_alias: string;
+  tx_hash?: string;
+  block_number?: string;
+  created_at: string;
+}
+
+interface BatchStats {
+  queuedCount: number;
+  totalBytes: number;
+  maxBytes: number;
+  percentFull: number;
+  batchCount: number;
+  willOverflow: boolean;
+}
 
 // --- Types ---
 type Frequency = 'weekly' | 'biweekly' | 'monthly';
@@ -340,46 +364,56 @@ export default function DashboardTestPage() {
   // Elder Action State
   const [elderRequests, setElderRequests] = useState<ElderRequest[]>([]);
 
-  // --- NETWORK QUEUE STATE (Dynamic Simulation) ---
-  const [queueItems, setQueueItems] = useState([
-    { id: 1, label: 'Treasury Loan Approval', meta: 'Vote recorded · Awaiting batch', status: 'queued' },
-    { id: 2, label: 'Member Share Capital', meta: '₱ 500 contribution · Awaiting batch', status: 'queued' },
-    { id: 3, label: 'P2P Loan + 2 Repayments', meta: '3 records grouped · Submitting...', status: 'etching' },
-    { id: 4, label: 'Reconciliation + 4 Votes', meta: '5 records · Block #9,847,321', status: 'done' },
-  ]);
+  // --- NETWORK QUEUE STATE (Real Data from Database) ---
+  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
+  const [batchStats, setBatchStats] = useState<BatchStats>({
+    queuedCount: 0, totalBytes: 0, maxBytes: 16384, percentFull: 0, batchCount: 1, willOverflow: false,
+  });
+  const [queueLoading, setQueueLoading] = useState(true);
 
-  // Simulation: Progress the queue every 8 seconds
+  // Countdown timer for next batch
+  const [nextBatchIn, setNextBatchIn] = useState(300); // 5 minutes in seconds
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      setQueueItems(prev => {
-        const next = [...prev];
-        // Simple cycle for demo: Move item 1 from queued -> etching -> done
-        if (next[0].status === 'queued') {
-          next[0].status = 'etching';
-          next[0].meta = 'Vote recorded · Submitting batch...';
-        } else if (next[0].status === 'etching') {
-          next[0].status = 'done';
-          next[0].meta = `Vote recorded · Block #${Math.floor(Math.random() * 1000000) + 9000000}`;
-          
-          // Rotate items: move the done one to the end and make a new one queued
-          setTimeout(() => {
-            setQueueItems(current => {
-              const rotated = [...current];
-              const first = rotated.shift();
-              if (first) {
-                first.status = 'queued';
-                first.meta = 'Awaiting batch...';
-                rotated.push(first);
-              }
-              return rotated;
-            });
-          }, 3000);
-        }
-        return next;
-      });
-    }, 8000);
-    return () => clearInterval(interval);
+    const timer = setInterval(() => {
+      setNextBatchIn(prev => (prev > 0 ? prev - 1 : 300));
+    }, 1000);
+    return () => clearInterval(timer);
   }, []);
+
+  const fmtTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const rs = s % 60;
+    return `${m}:${rs < 10 ? '0' : ''}${rs}`;
+  };
+
+  // Fetch queue data from API
+  const fetchQueue = async () => {
+    if (!address) return;
+    try {
+      const res = await fetch(`/api/community/queue?address=${address}`, {
+        headers: { 'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setQueueItems(data.queue || []);
+        if (data.batchStats) setBatchStats(data.batchStats);
+      }
+    } catch (err) {
+      console.error('Failed to fetch queue:', err);
+    } finally {
+      setQueueLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (address) {
+      fetchQueue();
+      // Refresh queue every 30 seconds
+      const interval = setInterval(fetchQueue, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [address]);
 
   // Fetch community stats when address is available
   useEffect(() => {
@@ -747,32 +781,67 @@ export default function DashboardTestPage() {
                 <h3 className="network-queue__title"><Layers size={16} /> Network Queue</h3>
                 <div className="network-queue__sub">Pending receipts waiting to be batched and etched on-chain</div>
               </div>
-              <span className="network-queue__badge"><Clock size={11} /> Next batch in ~4 min</span>
+              <span className="network-queue__badge"><Clock size={11} /> Next batch in ~{fmtTime(nextBatchIn)}</span>
             </div>
-            <div className="network-queue__items">
-              {queueItems.map((item) => (
-                <div key={item.id} className={`nq-item nq-item--${item.status === 'etching' ? 'batched' : item.status}`}>
-                  <div className="nq-item__dot"></div>
-                  <div className="nq-item__body">
-                    <span className="nq-item__label">{item.label}</span>
-                    <span className="nq-item__meta">{item.meta}</span>
-                  </div>
-                  {item.status === 'queued' && <span className="nq-item__status">Queued</span>}
-                  {item.status === 'etching' && (
-                    <span className="nq-item__status nq-item__status--active">
-                      <span className="nq-spinner"></span> Etching
-                    </span>
-                  )}
-                  {item.status === 'done' && (
-                    <span className="nq-item__status nq-item__status--done">
-                      <Check size={12} /> Etched
-                    </span>
-                  )}
+
+            {/* Batch Progress Bar */}
+            {batchStats.queuedCount > 0 && (
+              <div className="nq-batch-bar">
+                <div className="nq-batch-bar__header">
+                  <span className="nq-batch-bar__label"><Database size={12} /> Batch {batchStats.batchCount > 1 ? '1' : ''} Capacity</span>
+                  <span className="nq-batch-bar__value">{(batchStats.totalBytes / 1024).toFixed(1)} KB / 16 KB</span>
                 </div>
-              ))}
+                <div className="nq-batch-bar__track">
+                  <div className="nq-batch-bar__fill" style={{ width: `${Math.min(100, batchStats.percentFull)}%` }} />
+                </div>
+                {batchStats.willOverflow && (
+                  <div className="nq-batch-bar__overflow">
+                    <Activity size={11} /> Overflow detected — will split into {batchStats.batchCount} transactions
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="network-queue__items">
+              {queueLoading ? (
+                <div className="nq-empty">
+                  <span className="nq-spinner" style={{ width: 16, height: 16 }} />
+                  <span style={{ marginLeft: 8, color: 'var(--text-3)', fontSize: 13 }}>Loading queue…</span>
+                </div>
+              ) : queueItems.length === 0 ? (
+                <div className="nq-empty">
+                  <Check size={16} style={{ color: 'var(--status-green)' }} />
+                  <span style={{ marginLeft: 8, color: 'var(--text-2)', fontSize: 13 }}>All receipts have been etched — queue is clear</span>
+                </div>
+              ) : (
+                queueItems.slice(0, 8).map((item) => (
+                  <div key={item.queue_id} className={`nq-item nq-item--${item.status === 'batched' ? 'batched' : item.status === 'etched' ? 'done' : 'queued'}`}>
+                    <div className="nq-item__dot" />
+                    <div className="nq-item__body">
+                      <span className="nq-item__label">{item.summary}</span>
+                      <span className="nq-item__meta">
+                        {item.member_alias} · {item.estimated_bytes} bytes
+                        {item.block_number ? ` · Block #${item.block_number}` : ''}
+                        {item.status === 'queued' ? ' · Awaiting batch' : ''}
+                      </span>
+                    </div>
+                    {item.status === 'queued' && <span className="nq-item__status">Queued</span>}
+                    {item.status === 'batched' && (
+                      <span className="nq-item__status nq-item__status--active">
+                        <span className="nq-spinner" /> Etching
+                      </span>
+                    )}
+                    {item.status === 'etched' && (
+                      <span className="nq-item__status nq-item__status--done">
+                        <Check size={12} /> Etched
+                      </span>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
             <div className="network-queue__footer">
-              <span>Cardano batches minimize fees · 16KB overflow handled automatically</span>
+              <span>{batchStats.queuedCount} receipt{batchStats.queuedCount !== 1 ? 's' : ''} pending · Cardano batches minimize fees · 16KB overflow handled automatically</span>
             </div>
           </div>
 
@@ -2904,6 +2973,7 @@ const CUSTOM_CSS = `
   .nq-item { display: flex; align-items: center; gap: 14px; padding: 13px 0; border-bottom: 1px solid var(--border); }
   .nq-item:last-child { border-bottom: 0; }
   .nq-item__dot { width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0; }
+  .nq-item--queued .nq-item__dot { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15); }
   .nq-item--pending .nq-item__dot { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15); }
   .nq-item--batched .nq-item__dot { background: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); animation: pulse-dot 1.5s ease infinite; }
   .nq-item--done .nq-item__dot { background: var(--status-green); box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15); }
@@ -2917,6 +2987,19 @@ const CUSTOM_CSS = `
   .nq-spinner { width: 10px; height: 10px; border: 2px solid rgba(59, 130, 246, 0.25); border-top-color: #3b82f6; border-radius: 999px; animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .network-queue__footer { padding: 10px 22px; background: var(--surface-2); border-top: 1px solid var(--border); font-size: 11px; color: var(--text-3); text-align: center; }
+
+  /* Batch Progress Bar */
+  .nq-batch-bar { padding: 0 22px 14px; }
+  .nq-batch-bar__header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .nq-batch-bar__label { font-size: 11.5px; font-weight: 600; color: var(--text-2); display: inline-flex; align-items: center; gap: 5px; }
+  .nq-batch-bar__value { font-size: 11.5px; font-weight: 600; color: var(--text); font-family: 'JetBrains Mono', monospace; }
+  .nq-batch-bar__track { width: 100%; height: 6px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; }
+  .nq-batch-bar__fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, rgba(22, 163, 74, 0.6), rgba(22, 163, 74, 1)); transition: width 600ms ease; }
+  .nq-batch-bar__overflow { margin-top: 6px; font-size: 11px; color: #f59e0b; font-weight: 600; display: flex; align-items: center; gap: 5px; }
+
+  /* Empty State */
+  .nq-empty { display: flex; align-items: center; justify-content: center; padding: 28px 22px; }
+
 
   @media (max-width: 900px) {
     .topbar { padding: 14px 18px; gap: 12px; flex-wrap: wrap; }

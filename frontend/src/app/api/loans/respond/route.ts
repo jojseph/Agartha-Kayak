@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { enqueueReceipt } from '@/lib/enqueueReceipt';
 
 export async function POST(request: Request) {
     const authHeader = request.headers.get('Authorization');
@@ -49,6 +50,28 @@ export async function POST(request: Request) {
         if (error) {
             console.error('Update loan status error:', error);
             return NextResponse.json({ error: 'Failed to update loan status' }, { status: 500 });
+        }
+
+        // Enqueue receipt for on-chain etching (only on approval)
+        if (action === 'approved' && data) {
+            // Get the lender's community_id to know which community queue this belongs to
+            const { data: lenderData } = await supabaseAdmin
+                .from('members')
+                .select('community_id, alias')
+                .eq('wallet_address', lenderAddress)
+                .single();
+
+            if (lenderData?.community_id) {
+                const amount = data.amount ? `\u20b1${Number(data.amount).toLocaleString()}` : data.item_name || 'item';
+                await enqueueReceipt({
+                    communityId: lenderData.community_id,
+                    recordType: 'peer_loan_approved',
+                    referenceId: loanId,
+                    memberAddress: lenderAddress,
+                    summary: `P2P Loan ${amount} \u2014 ${data.purpose || 'Peer lending'}`,
+                    estimatedBytes: 260,
+                });
+            }
         }
 
         return NextResponse.json({ success: true, loan: data });

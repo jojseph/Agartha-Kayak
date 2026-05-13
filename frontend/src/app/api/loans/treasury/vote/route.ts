@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { enqueueReceipt } from '@/lib/enqueueReceipt';
 
 export async function POST(request: Request) {
     const authHeader = request.headers.get('Authorization');
@@ -138,6 +139,24 @@ export async function POST(request: Request) {
                 return NextResponse.json({ error: 'Failed to approve loan' }, { status: 500 });
             }
             approved = true;
+
+            // Enqueue the approval receipt for on-chain etching
+            const { data: approvedLoan } = await supabaseAdmin
+                .from('loans')
+                .select('amount, purpose, borrower_address')
+                .eq('loan_id', loanId)
+                .single();
+
+            if (approvedLoan) {
+                await enqueueReceipt({
+                    communityId: voter.community_id,
+                    recordType: 'loan_approved',
+                    referenceId: loanId,
+                    memberAddress: approvedLoan.borrower_address,
+                    summary: `Treasury Loan ₱${Number(approvedLoan.amount).toLocaleString()} — ${approvedLoan.purpose}`,
+                    estimatedBytes: 320,
+                });
+            }
         }
         // Check if rejection is mathematically certain (remaining votes can't save it)
         else if (rejects >= majorityThreshold) {
@@ -151,6 +170,24 @@ export async function POST(request: Request) {
                 return NextResponse.json({ error: 'Failed to reject loan' }, { status: 500 });
             }
             rejected = true;
+
+            // Enqueue the rejection receipt for on-chain etching
+            const { data: rejectedLoan } = await supabaseAdmin
+                .from('loans')
+                .select('amount, purpose, borrower_address')
+                .eq('loan_id', loanId)
+                .single();
+
+            if (rejectedLoan) {
+                await enqueueReceipt({
+                    communityId: voter.community_id,
+                    recordType: 'loan_rejected',
+                    referenceId: loanId,
+                    memberAddress: rejectedLoan.borrower_address,
+                    summary: `Treasury Loan ₱${Number(rejectedLoan.amount).toLocaleString()} — Rejected`,
+                    estimatedBytes: 280,
+                });
+            }
         }
 
         return NextResponse.json({

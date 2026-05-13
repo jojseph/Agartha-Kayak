@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { enqueueReceipt } from '@/lib/enqueueReceipt';
 
 // POST: An Elder signs (approves/rejects) a pending reconciliation
 export async function POST(request: Request) {
@@ -117,6 +118,16 @@ export async function POST(request: Request) {
                 }]);
 
             resolved = true;
+
+            // Enqueue the reconciliation receipt for on-chain etching
+            await enqueueReceipt({
+                communityId: recon.community_id,
+                recordType: 'reconciliation_approved',
+                referenceId: reconciliationId,
+                memberAddress: recon.proposed_by,
+                summary: `Reconciliation \u2014 ${recon.reason} (\u20b1${Math.abs(recon.proposed_balance - recon.previous_balance).toLocaleString()} adjustment)`,
+                estimatedBytes: 300,
+            });
         }
 
         // Check if a single rejection should kill the proposal

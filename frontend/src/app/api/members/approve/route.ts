@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { enqueueReceipt } from '@/lib/enqueueReceipt';
 
 export async function POST(request: Request) {
     const authHeader = request.headers.get('Authorization');
@@ -75,6 +76,16 @@ export async function POST(request: Request) {
                         .from('communities')
                         .update({ treasury_balance: newBalance })
                         .eq('community_id', community.community_id);
+
+                    // Enqueue share capital receipt for on-chain etching
+                    await enqueueReceipt({
+                        communityId: community.community_id,
+                        recordType: 'share_capital',
+                        referenceId: community.community_id, // no specific loan — use community as ref
+                        memberAddress: memberAddress,
+                        summary: `Share Capital \u20b1${Number(shareCapital).toLocaleString()} \u2014 New Member`,
+                        estimatedBytes: 180,
+                    });
                 }
             }
         }

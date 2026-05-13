@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { enqueueReceipt } from '@/lib/enqueueReceipt';
 
 // POST: Elder/Owner confirms (or rejects) a pending repayment
 export async function POST(request: Request) {
@@ -74,6 +75,16 @@ export async function POST(request: Request) {
         // If confirmed, check if the loan is now fully paid
         if (action === 'confirmed') {
             const loan = repayment.loan as any;
+
+            // Enqueue the repayment receipt for on-chain etching
+            await enqueueReceipt({
+                communityId: elder.community_id,
+                recordType: 'repayment_confirmed',
+                referenceId: repaymentId,
+                memberAddress: repayment.payer_address,
+                summary: `Repayment \u20b1${Number(repayment.amount).toLocaleString()} confirmed \u2014 ${loan.loan_type === 'treasury' ? 'Treasury' : 'P2P'} Loan`,
+                estimatedBytes: 240,
+            });
 
             // Get all confirmed repayments for this loan (including the one we just confirmed)
             const { data: allConfirmed } = await supabaseAdmin

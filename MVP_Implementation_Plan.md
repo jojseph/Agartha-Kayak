@@ -34,7 +34,7 @@ This plan breaks down the missing MVP features into 4 manageable phases. As requ
 
 ---
 
-### Phase 3: The "Witness" Mechanics (Backend + Integration)
+### Phase 3: The "Witness" Mechanics (Backend + Integration)-Done
 *Goal: Implement the core "Trustless Witness" features.*
 *   **Two-Step Repayment API**: Update repayment endpoints so a member logs an intent to pay, but it remains "pending" until an Elder/Owner hits an endpoint confirming real-world receipt.
 *   **Penalty & Overdue Cron/Logic**: Create a utility to check for overdue loans and apply penalty interest if the due date has passed without a confirmed payment.
@@ -44,7 +44,7 @@ This plan breaks down the missing MVP features into 4 manageable phases. As requ
 
 ---
 
-### Phase 4: UI/UX & Dashboards
+### Phase 4: UI/UX & Dashboards-Done
 *Goal: Bring the backend mechanics to life in the frontend.*
 *   **Network Queue Component**: Build the visual "MVP" component that shows pending on-chain receipts grouping together.
 *   **Reconciliation Dashboard**: Build the Elder UI for proposing and signing manual treasury updates.
