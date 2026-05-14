@@ -110,8 +110,6 @@ The extended loan lifecycle for Treasury Loans:
 
 **Status Flow:** *Pending → Approved → Ongoing → Fully Paid  OR  Overdue  OR  Defaulted*
 
-When a payment is missed past the due date, a penalty interest is applied on top of the regular rate, causing the outstanding balance to grow. This — combined with the permanent on-chain record of the default — serves as a strong deterrent against non-payment.
-
 Email and dashboard notifications are sent to the borrower when a repayment is due, overdue, or when the loan status changes.
 
 # **Governance & Voting**
