@@ -4,8 +4,6 @@ A blockchain-witnessed cooperative ledger for Filipino credit cooperatives. Agar
 
 The platform never holds funds. It is an **immutable witness, not a custodial vault**: members and elders move money in the real world, and Agartha permanently records that it happened. Multi-tenant by design — multiple cooperatives can run on a single deployment, each with its own treasury, governance, and membership.
 
-For the full philosophy, governance model, and workflow, see [`Agartha-Blockchain (1).md`](./Agartha-Blockchain%20%281%29.md). For the phased delivery plan, see [`MVP_Implementation_Plan.md`](./MVP_Implementation_Plan.md). For current limitations and known gaps, see [`PatchNotes.md`](./PatchNotes.md). Architecture and outstanding-work documents (`ARCHI.md`, `TODO.md`) are maintained outside the repo by the project owner.
-
 ---
 
 ## Tech Stack
@@ -86,11 +84,11 @@ Agartha-Kayak/
 ### 1. Install dependencies
 ```bash
 # From the repository root — installs Husky + Commitizen
-npm install
+bun install
 
 # Then install the Next.js app's dependencies
 cd frontend
-npm install
+bun install
 ```
 
 ### 2. Apply the Supabase schema
@@ -121,7 +119,7 @@ NEXT_PUBLIC_API_KAYAK_KEY=<a-shared-secret>
 ### 4. Start the dev server
 ```bash
 cd frontend
-npm run dev
+bun run dev
 ```
 
 The app runs on **http://localhost:3000**.
@@ -137,8 +135,8 @@ The app runs on **http://localhost:3000**.
 
 ### Other commands
 ```bash
-npm run build      # Production build (from frontend/)
-npm run start      # Run the production build
-npm run lint       # ESLint
-npm run commit     # Commitizen-guided conventional commit (from repo root)
+bun run build      # Production build (from frontend/)
+bun run start      # Run the production build
+bun run lint       # ESLint
+bun run commit     # Commitizen-guided conventional commit (from repo root)
 ```
