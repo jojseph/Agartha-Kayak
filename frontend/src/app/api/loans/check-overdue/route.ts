@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { verifyWalletAuth } from '@/lib/auth';
 
 // POST: Scan all active/approved loans and flag overdue ones + apply penalty interest
 // This can be called on a schedule (cron) or triggered manually by an Elder/Owner
 export async function POST(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await verifyWalletAuth(request, { role: ['superuser'] });
+    if (auth instanceof NextResponse) return auth;
 
     try {
         const now = new Date();

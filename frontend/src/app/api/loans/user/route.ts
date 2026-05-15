@@ -2,11 +2,6 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 export async function GET(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
-        return NextResponse.json({ error: 'Unauthorized BRAH!' }, { status: 401 });
-    }
-
     try {
         const url = new URL(request.url);
         const address = url.searchParams.get('address');

@@ -1,18 +1,21 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { verifyWalletAuth } from '@/lib/auth';
 
 // POST: Member logs a repayment (status starts as 'pending' until an Elder confirms)
 export async function POST(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await verifyWalletAuth(request);
+    if (auth instanceof NextResponse) return auth;
 
     try {
         const { loanId, payerAddress, amount, method, referenceCode } = await request.json();
 
         if (!loanId || !payerAddress || !amount) {
             return NextResponse.json({ error: 'loanId, payerAddress, and amount are required' }, { status: 400 });
+        }
+
+        if (payerAddress !== auth.walletAddress) {
+            return NextResponse.json({ error: 'payerAddress must match the signing wallet' }, { status: 403 });
         }
 
         if (amount <= 0) {

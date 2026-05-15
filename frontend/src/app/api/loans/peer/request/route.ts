@@ -1,17 +1,20 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { verifyWalletAuth } from '@/lib/auth';
 
 export async function POST(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
-        return NextResponse.json({ error: 'Unauthorized BRAH!' }, { status: 401 });
-    }
+    const auth = await verifyWalletAuth(request);
+    if (auth instanceof NextResponse) return auth;
 
     try {
         const { borrowerAddress, lenderAddress, mode, amount, itemName, date, time, purpose } = await request.json();
 
         if (!borrowerAddress || !lenderAddress || !purpose) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+        }
+
+        if (borrowerAddress !== auth.walletAddress) {
+            return NextResponse.json({ error: 'borrowerAddress must match the signing wallet' }, { status: 403 });
         }
 
         if (mode === 'money' && (!amount || amount <= 0)) {

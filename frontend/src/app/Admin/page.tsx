@@ -2,11 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useWallet } from '@meshsdk/react';
 import { ShieldCheck, PlusCircle, UserCog, Landmark, ChevronLeft } from 'lucide-react';
 
 export default function AdminPage() {
     const router = useRouter();
-    
+    const { wallet, connected } = useWallet();
+    const [accessStatus, setAccessStatus] = useState<'checking' | 'allowed' | 'denied'>('checking');
+
     const [communities, setCommunities] = useState<any[]>([]);
     const [members, setMembers] = useState<any[]>([]);
     
@@ -26,10 +29,43 @@ export default function AdminPage() {
     const [adjustBalance, setAdjustBalance] = useState('');
     const [treasuryLoading, setTreasuryLoading] = useState(false);
 
+    // SuperUser gate (Module 1 CP4 placeholder).
+    // TODO(M2): replace this client-side wallet probe with Ben's AuthProvider
+    // role check (Task 2.1) once the unified auth context lands. The real
+    // security barrier is the API layer (verifyWalletAuth + role: ['superuser']
+    // on every /api/admin/* route) — this is a UX-only redirect.
     useEffect(() => {
+        async function verifySuperUser() {
+            if (!connected || !wallet) {
+                setAccessStatus('denied');
+                return;
+            }
+            try {
+                const address = await wallet.getChangeAddress();
+                const res = await fetch('/api/members', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ walletAddress: address }),
+                });
+                if (!res.ok) {
+                    setAccessStatus('denied');
+                    return;
+                }
+                const data = await res.json();
+                setAccessStatus(data.member?.role === 'superuser' ? 'allowed' : 'denied');
+            } catch (e) {
+                console.error('SuperUser role check failed:', e);
+                setAccessStatus('denied');
+            }
+        }
+        verifySuperUser();
+    }, [connected, wallet]);
+
+    useEffect(() => {
+        if (accessStatus !== 'allowed') return;
         fetchCommunities();
         fetchMembers();
-    }, []);
+    }, [accessStatus]);
 
     const fetchCommunities = async () => {
         try {
@@ -139,6 +175,32 @@ export default function AdminPage() {
             setTreasuryLoading(false);
         }
     };
+
+    if (accessStatus === 'checking') {
+        return (
+            <main className="min-h-screen w-full bg-black text-white flex items-center justify-center">
+                <p className="text-white/70">Verifying SuperUser access…</p>
+            </main>
+        );
+    }
+    if (accessStatus === 'denied') {
+        return (
+            <main className="min-h-screen w-full bg-black text-white flex flex-col items-center justify-center gap-4 px-6 text-center">
+                <h1 className="text-2xl md:text-3xl font-bold">Access Denied</h1>
+                <p className="text-white/70 max-w-md">
+                    This page is restricted to platform SuperUsers. The API endpoints under{' '}
+                    <code className="font-mono">/api/admin/*</code> are also gated server-side —
+                    connect a SuperUser wallet to proceed.
+                </p>
+                <button
+                    onClick={() => router.push('/')}
+                    className="px-5 py-2.5 bg-white text-black rounded-full text-sm font-medium hover:bg-gray-100 transition-colors"
+                >
+                    Back to Home
+                </button>
+            </main>
+        );
+    }
 
     return (
         <main className="relative min-h-screen w-full overflow-hidden isolate bg-black text-white font-sans">

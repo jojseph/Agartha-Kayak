@@ -1,17 +1,20 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { verifyWalletAuth } from '@/lib/auth';
 
 export async function POST(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await verifyWalletAuth(request);
+    if (auth instanceof NextResponse) return auth;
 
     try {
         const { borrowerAddress, amount, purpose, termMonths, repaymentFrequency, collateral } = await request.json();
 
         if (!borrowerAddress || !amount || !purpose) {
             return NextResponse.json({ error: 'Missing required fields: borrowerAddress, amount, purpose' }, { status: 400 });
+        }
+
+        if (borrowerAddress !== auth.walletAddress) {
+            return NextResponse.json({ error: 'borrowerAddress must match the signing wallet' }, { status: 403 });
         }
 
         if (amount <= 0) {
@@ -55,6 +58,27 @@ export async function POST(request: Request) {
 
         if (community.treasury_balance < amount) {
             return NextResponse.json({ error: 'Requested amount exceeds available treasury balance' }, { status: 400 });
+        }
+
+        // Enforce one active treasury loan per member (TODO.md Testing #2 — prevent debt stacking).
+        // Active = anything before fully_paid / rejected / defaulted / invalid / completed.
+        const { count: activeCount, error: activeCheckError } = await supabaseAdmin
+            .from('loans')
+            .select('*', { count: 'exact', head: true })
+            .eq('borrower_address', borrowerAddress)
+            .eq('loan_type', 'treasury')
+            .in('status', ['pending', 'approved', 'active', 'overdue']);
+
+        if (activeCheckError) {
+            console.error('Active treasury loan check error:', activeCheckError);
+            return NextResponse.json({ error: 'Failed to check existing loans' }, { status: 500 });
+        }
+
+        if ((activeCount ?? 0) > 0) {
+            return NextResponse.json(
+                { error: 'You already have an active treasury loan. Settle it before requesting another.' },
+                { status: 409 }
+            );
         }
 
         // Insert the treasury loan request as pending

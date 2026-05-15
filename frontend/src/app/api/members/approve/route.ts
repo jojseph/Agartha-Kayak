@@ -1,18 +1,22 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { verifyWalletAuth } from '@/lib/auth';
 import { enqueueReceipt } from '@/lib/enqueueReceipt';
+import { adjustTreasuryBalance } from '@/lib/balanceOps';
 
 export async function POST(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
-        return NextResponse.json({ error: 'Unauthorized BRAH!' }, { status: 401 });
-    }
-    
+    const auth = await verifyWalletAuth(request, { role: ['elder', 'owner'] });
+    if (auth instanceof NextResponse) return auth;
+
     try {
         const { elderAddress, memberAddress, action } = await request.json();
 
         if (!elderAddress || !memberAddress || !action) {
             return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
+        }
+
+        if (elderAddress !== auth.walletAddress) {
+            return NextResponse.json({ error: 'elderAddress must match the signing wallet' }, { status: 403 });
         }
 
         if (action !== 'approved' && action !== 'rejected') {
@@ -51,7 +55,7 @@ export async function POST(request: Request) {
             // Get the community's required share capital
             const { data: community, error: communityError } = await supabaseAdmin
                 .from('communities')
-                .select('community_id, share_capital_required, treasury_balance')
+                .select('community_id, share_capital_required')
                 .eq('community_id', elderData.community_id)
                 .single();
 
@@ -70,12 +74,8 @@ export async function POST(request: Request) {
                             description: `Initial share capital contribution from new member`,
                         }]);
 
-                    // Increment the treasury balance
-                    const newBalance = (community.treasury_balance ?? 0) + shareCapital;
-                    await supabaseAdmin
-                        .from('communities')
-                        .update({ treasury_balance: newBalance })
-                        .eq('community_id', community.community_id);
+                    // Atomically credit the treasury with the share capital
+                    await adjustTreasuryBalance(community.community_id, shareCapital);
 
                     // Enqueue share capital receipt for on-chain etching
                     await enqueueReceipt({

@@ -1,13 +1,10 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { verifyWalletSignature } from '@/lib/auth';
 
 export async function POST(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    
-    // Security Check: Verify the request is coming from your frontend
-    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
-        return NextResponse.json({ error: 'Unauthorized BRAH!' }, { status: 401 });
-    }
+    const sig = await verifyWalletSignature(request);
+    if (sig instanceof NextResponse) return sig;
     
     try {
         const { walletAddress, alias, communityId, barangay, email } = await request.json();
@@ -16,6 +13,10 @@ export async function POST(request: Request) {
         console.log('REGISTER DEBUG:', { walletAddress, alias, communityId, barangay, email });
         if (!walletAddress || !alias || !communityId || !email) {
             return NextResponse.json({ error: 'Wallet address, alias, community, and email are required' }, { status: 400 });
+        }
+
+        if (walletAddress !== sig.walletAddress) {
+            return NextResponse.json({ error: 'walletAddress in body must match the signing wallet' }, { status: 403 });
         }
 
         // Insert the new member into Supabase

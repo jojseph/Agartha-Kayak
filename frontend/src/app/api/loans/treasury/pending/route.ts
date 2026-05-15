@@ -2,11 +2,6 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 export async function GET(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     try {
         const url = new URL(request.url);
         const address = url.searchParams.get('address');
@@ -51,9 +46,13 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Database error' }, { status: 500 });
         }
 
-        // Filter to same community as the elder
+        // Filter to same community as the elder, AND hide the elder's own request
+        // from their approval list (TODO.md #2 — an Elder shouldn't see their own
+        // pending treasury loan as something they can vote on).
         const communityLoans = (loans || []).filter(
-            (loan: any) => loan.borrower?.community_id === elder.community_id
+            (loan: any) =>
+                loan.borrower?.community_id === elder.community_id &&
+                loan.borrower_address !== address
         );
 
         // For each loan, fetch the existing votes from treasury_loan_votes

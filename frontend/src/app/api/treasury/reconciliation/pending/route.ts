@@ -3,11 +3,6 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 // GET: List pending reconciliations for a community
 export async function GET(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     try {
         const url = new URL(request.url);
         const address = url.searchParams.get('address');

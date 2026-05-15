@@ -1,19 +1,23 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { verifyWalletAuth } from '@/lib/auth';
 import { enqueueReceipt } from '@/lib/enqueueReceipt';
+import { adjustTreasuryBalance } from '@/lib/balanceOps';
 
 // POST: Elder/Owner confirms (or rejects) a pending repayment
 export async function POST(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await verifyWalletAuth(request, { role: ['elder', 'owner'] });
+    if (auth instanceof NextResponse) return auth;
 
     try {
         const { repaymentId, elderAddress, action } = await request.json();
 
         if (!repaymentId || !elderAddress || !action) {
             return NextResponse.json({ error: 'repaymentId, elderAddress, and action are required' }, { status: 400 });
+        }
+
+        if (elderAddress !== auth.walletAddress) {
+            return NextResponse.json({ error: 'elderAddress must match the signing wallet' }, { status: 403 });
         }
 
         if (!['confirmed', 'rejected'].includes(action)) {
@@ -105,33 +109,21 @@ export async function POST(request: Request) {
 
                 // If it's a treasury loan, add the repaid amount back to the community treasury
                 if (loan.loan_type === 'treasury') {
-                    const { data: community } = await supabaseAdmin
-                        .from('communities')
-                        .select('community_id, treasury_balance')
-                        .eq('community_id', elder.community_id)
-                        .single();
+                    // Log the repayment as a community transaction
+                    await supabaseAdmin
+                        .from('community_transactions')
+                        .insert([{
+                            community_id: elder.community_id,
+                            member_address: loan.borrower_address,
+                            loan_id: loan.loan_id,
+                            repayment_id: repaymentId,
+                            transaction_type: 'repayment',
+                            amount: Number(repayment.amount),
+                            description: `Repayment confirmed for treasury loan (FULLY PAID)`,
+                        }]);
 
-                    if (community) {
-                        // Log the repayment as a community transaction
-                        await supabaseAdmin
-                            .from('community_transactions')
-                            .insert([{
-                                community_id: community.community_id,
-                                member_address: loan.borrower_address,
-                                loan_id: loan.loan_id,
-                                repayment_id: repaymentId,
-                                transaction_type: 'repayment',
-                                amount: Number(repayment.amount),
-                                description: `Repayment confirmed for treasury loan (FULLY PAID)`,
-                            }]);
-
-                        // Add the confirmed amount back to the treasury
-                        const newBalance = (community.treasury_balance ?? 0) + Number(repayment.amount);
-                        await supabaseAdmin
-                            .from('communities')
-                            .update({ treasury_balance: newBalance })
-                            .eq('community_id', community.community_id);
-                    }
+                    // Atomically credit the treasury with the final repayment
+                    await adjustTreasuryBalance(elder.community_id, Number(repayment.amount));
                 }
 
                 return NextResponse.json({
@@ -145,31 +137,20 @@ export async function POST(request: Request) {
 
             // Partial repayment — if treasury loan, still credit the treasury
             if (loan.loan_type === 'treasury') {
-                const { data: community } = await supabaseAdmin
-                    .from('communities')
-                    .select('community_id, treasury_balance')
-                    .eq('community_id', elder.community_id)
-                    .single();
+                await supabaseAdmin
+                    .from('community_transactions')
+                    .insert([{
+                        community_id: elder.community_id,
+                        member_address: loan.borrower_address,
+                        loan_id: loan.loan_id,
+                        repayment_id: repaymentId,
+                        transaction_type: 'repayment',
+                        amount: Number(repayment.amount),
+                        description: `Repayment confirmed for treasury loan`,
+                    }]);
 
-                if (community) {
-                    await supabaseAdmin
-                        .from('community_transactions')
-                        .insert([{
-                            community_id: community.community_id,
-                            member_address: loan.borrower_address,
-                            loan_id: loan.loan_id,
-                            repayment_id: repaymentId,
-                            transaction_type: 'repayment',
-                            amount: Number(repayment.amount),
-                            description: `Repayment confirmed for treasury loan`,
-                        }]);
-
-                    const newBalance = (community.treasury_balance ?? 0) + Number(repayment.amount);
-                    await supabaseAdmin
-                        .from('communities')
-                        .update({ treasury_balance: newBalance })
-                        .eq('community_id', community.community_id);
-                }
+                // Atomically credit the treasury with the partial repayment
+                await adjustTreasuryBalance(elder.community_id, Number(repayment.amount));
             }
 
             return NextResponse.json({

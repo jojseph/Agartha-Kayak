@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { verifyWalletAuth } from '@/lib/auth';
 import { enqueueReceipt } from '@/lib/enqueueReceipt';
 
 export async function POST(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
-        return NextResponse.json({ error: 'Unauthorized BRAH!' }, { status: 401 });
-    }
+    const auth = await verifyWalletAuth(request);
+    if (auth instanceof NextResponse) return auth;
 
     try {
         const { loanId, action, reason, lenderAddress } = await request.json();
@@ -17,6 +16,10 @@ export async function POST(request: Request) {
 
         if (!['approved', 'rejected'].includes(action)) {
             return NextResponse.json({ error: 'action must be "approved" or "rejected"' }, { status: 400 });
+        }
+
+        if (lenderAddress !== auth.walletAddress) {
+            return NextResponse.json({ error: 'lenderAddress must match the signing wallet' }, { status: 403 });
         }
 
         // Verify the caller is actually the lender for this loan

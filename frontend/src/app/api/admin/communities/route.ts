@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { verifyWalletAuth } from '@/lib/auth';
 
 export async function POST(request: Request) {
+    const auth = await verifyWalletAuth(request, { role: ['superuser'] });
+    if (auth instanceof NextResponse) return auth;
+
     try {
         const body = await request.json();
         const { name, treasury_wallet_address, treasury_balance } = body;
@@ -35,6 +39,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+    const auth = await verifyWalletAuth(request, { role: ['superuser'] });
+    if (auth instanceof NextResponse) return auth;
+
     try {
         const body = await request.json();
         const { community_id, treasury_balance } = body;

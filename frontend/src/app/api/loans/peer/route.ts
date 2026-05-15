@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { verifyWalletAuth } from '@/lib/auth';
 import { blockfrost } from '@/lib/blockfrost';
 
 export async function POST(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
-        return NextResponse.json({ error: 'Unauthorized BRAH!' }, { status: 401 });
-    }
+    const auth = await verifyWalletAuth(request);
+    if (auth instanceof NextResponse) return auth;
 
     try {
         const { borrowerAddress, lenderAddress, txHash, amount, currency, purpose, proof_url } =

@@ -1,19 +1,23 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { verifyWalletAuth } from '@/lib/auth';
 import { enqueueReceipt } from '@/lib/enqueueReceipt';
+import { setTreasuryBalance } from '@/lib/balanceOps';
 
 // POST: An Elder signs (approves/rejects) a pending reconciliation
 export async function POST(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await verifyWalletAuth(request, { role: ['elder', 'owner'] });
+    if (auth instanceof NextResponse) return auth;
 
     try {
         const { elderAddress, reconciliationId, decision } = await request.json();
 
         if (!elderAddress || !reconciliationId || !decision) {
             return NextResponse.json({ error: 'elderAddress, reconciliationId, and decision are required' }, { status: 400 });
+        }
+
+        if (elderAddress !== auth.walletAddress) {
+            return NextResponse.json({ error: 'elderAddress must match the signing wallet' }, { status: 403 });
         }
 
         if (!['approve', 'reject'].includes(decision)) {
@@ -95,13 +99,12 @@ export async function POST(request: Request) {
                 return NextResponse.json({ error: 'Failed to finalize reconciliation' }, { status: 500 });
             }
 
-            // Apply the balance update to the community treasury
-            const { error: treasuryError } = await supabaseAdmin
-                .from('communities')
-                .update({ treasury_balance: recon.proposed_balance })
-                .eq('community_id', recon.community_id);
-
-            if (treasuryError) {
+            // Apply the balance update to the community treasury (atomic SET — the
+            // Elder's hand-counted figure is the new source of truth, intentionally
+            // overwriting any concurrent adjustments).
+            try {
+                await setTreasuryBalance(recon.community_id, recon.proposed_balance);
+            } catch (treasuryError: any) {
                 console.error('Update treasury balance error:', treasuryError);
                 return NextResponse.json({ error: 'Failed to update treasury balance' }, { status: 500 });
             }

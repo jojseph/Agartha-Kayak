@@ -4,11 +4,6 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 const MAX_BATCH_BYTES = 16384; // 16KB Cardano metadata limit
 
 export async function GET(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     try {
         const url = new URL(request.url);
         const address = url.searchParams.get('address');
@@ -47,7 +42,7 @@ export async function GET(request: Request) {
         const items = queueItems || [];
 
         // Get member aliases for display
-        const memberAddresses = [...new Set(items.map(i => i.member_address))];
+        const memberAddresses = Array.from(new Set(items.map(i => i.member_address)));
         let aliasMap: Record<string, string> = {};
 
         if (memberAddresses.length > 0) {

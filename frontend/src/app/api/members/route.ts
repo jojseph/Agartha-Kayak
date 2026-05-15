@@ -6,11 +6,6 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
-        return NextResponse.json({ error: 'Unauthorized BRAH!' }, { status: 401 });
-    }
-    
     try{
         const { walletAddress } = await request.json();
 

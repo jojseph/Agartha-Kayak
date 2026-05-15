@@ -1,18 +1,21 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { verifyWalletAuth } from '@/lib/auth';
 import { enqueueReceipt } from '@/lib/enqueueReceipt';
 
 export async function POST(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader !== process.env.NEXT_PUBLIC_API_KAYAK_KEY) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await verifyWalletAuth(request, { role: ['elder', 'owner'] });
+    if (auth instanceof NextResponse) return auth;
 
     try {
         const { loanId, elderAddress, vote } = await request.json();
 
         if (!loanId || !elderAddress || !vote) {
             return NextResponse.json({ error: 'loanId, elderAddress, and vote are required' }, { status: 400 });
+        }
+
+        if (elderAddress !== auth.walletAddress) {
+            return NextResponse.json({ error: 'elderAddress must match the signing wallet' }, { status: 403 });
         }
 
         if (!['approve', 'reject'].includes(vote)) {
@@ -34,7 +37,7 @@ export async function POST(request: Request) {
         const { data: loan, error: loanError } = await supabaseAdmin
             .from('loans')
             .select(`
-                loan_id, loan_type, status,
+                loan_id, loan_type, status, borrower_address,
                 borrower:members!loans_borrower_address_fkey(community_id)
             `)
             .eq('loan_id', loanId)
@@ -42,6 +45,11 @@ export async function POST(request: Request) {
 
         if (loanError || !loan) {
             return NextResponse.json({ error: 'Loan not found' }, { status: 404 });
+        }
+
+        // Block self-voting: an Elder cannot vote on their own treasury loan request (TODO.md #1)
+        if (loan.borrower_address === auth.walletAddress) {
+            return NextResponse.json({ error: 'You cannot vote on your own loan request' }, { status: 403 });
         }
 
         if (loan.loan_type !== 'treasury') {
