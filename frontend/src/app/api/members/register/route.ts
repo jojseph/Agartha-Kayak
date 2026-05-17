@@ -28,8 +28,7 @@ export async function POST(request: Request) {
                     alias: alias,
                     email: email,
                     barangay: barangay || null,
-                    community_id: communityId,
-                    trust_score: 25.00 // The starting score for the Bayanihan Ledger
+                    community_id: communityId
                 }
             ])
             .select()
@@ -48,4 +47,4 @@ export async function POST(request: Request) {
         console.error('Server error during registration:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
-}
+}

@@ -8,7 +8,6 @@ code = code.replace(
   wallet_address: string;
   alias: string;
   barangay: string;
-  trust_score: number;
 }
 
 interface ElderRequest {

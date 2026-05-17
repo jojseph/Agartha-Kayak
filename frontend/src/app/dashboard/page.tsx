@@ -59,7 +59,6 @@ interface Neighbor {
   wallet_address: string;
   alias: string;
   barangay: string;
-  trust_score: number;
 }
 
 interface ElderRequest {
@@ -665,7 +664,7 @@ export default function DashboardTestPage() {
               <span className="user-menu__name">{memberData?.alias || 'Guest'}</span>
               <span className="user-menu__addr">{address ? `${address.slice(0, 8)}…${address.slice(-4)}` : ''}</span>
             </div>
-            <button className="user-menu__disconnect" type="button" onClick={() => { disconnect(); localStorage.removeItem('mesh-wallet-persist'); localStorage.setItem('agartha-signed-out', '1'); router.push('/'); }}>Disconnect</button>
+            <button className="user-menu__disconnect" type="button" onClick={() => { disconnect(); localStorage.removeItem('mesh-wallet-persist'); localStorage.setItem('agartha-signed-out', '1'); router.push('/');  }}>Disconnect</button>
           </div>
         </div>
       </header>

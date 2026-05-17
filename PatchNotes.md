@@ -3,6 +3,7 @@
 - Wallet connection and registration flow are available via `/walletAuthTest`.
 - Wallet-signed auth helpers and nonce flow exist (see `frontend/src/lib/auth.ts`, `frontend/src/lib/walletAuthClient.ts`, and `/api/auth/nonce`).
 - The `/dashboard` route exists and serves the main role-aware dashboard UI.
+- Trust score has been removed from the member model and UI surfaces.
 
 ---
 
