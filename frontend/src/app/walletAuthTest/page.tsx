@@ -138,6 +138,9 @@ export default function WalletAuthTestPage() {
 
   const handleConnectLace = async () => {
     setErrorMessage('');
+    // Explicit intent to log in — clears the sign-out marker so
+    // WalletSession will persist + auto-restore this connection again.
+    localStorage.removeItem('agartha-signed-out');
     try {
       await connect('lace');
     } catch (error) {

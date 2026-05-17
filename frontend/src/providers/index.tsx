@@ -1,11 +1,13 @@
 'use client';
 import { MeshProvider } from "@meshsdk/react";
 import { AuthProvider } from "./AuthProvider";
+import WalletSession from "@/components/WalletSession";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <MeshProvider>
-      {/* AuthProvider must be INSIDE MeshProvider so it can use useWallet() */}
+      {/* WalletSession + AuthProvider must be INSIDE MeshProvider (useWallet) */}
+      <WalletSession />
       <AuthProvider>
         {children}
       </AuthProvider>

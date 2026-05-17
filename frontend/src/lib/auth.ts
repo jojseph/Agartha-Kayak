@@ -93,11 +93,15 @@ export async function verifyWalletSignature(
   const bodyHash = bodyText.length === 0 ? EMPTY_BODY_SHA256 : sha256Hex(bodyText);
   const url = new URL(request.url);
   const canonicalMessage = `${request.method.toUpperCase()} ${url.pathname} ${nonce} ${bodyHash}`;
+  // Mesh checkSignature() does Buffer.from(data, "hex") internally, so `data`
+  // MUST be the hex of the signed message — not the raw string. The client
+  // signs toHex(canonicalMessage); the server compares the same hex.
+  const canonicalMessageHex = Buffer.from(canonicalMessage, 'utf8').toString('hex');
 
   let signatureValid = false;
   try {
     signatureValid = await checkSignature(
-      canonicalMessage,
+      canonicalMessageHex,
       { signature, key },
       walletAddress
     );
@@ -106,6 +110,11 @@ export async function verifyWalletSignature(
     return fail(401, 'Signature verification failed');
   }
   if (!signatureValid) {
+    console.error('[auth] Invalid signature', {
+      walletAddress,
+      canonicalMessage,
+      bodyLen: bodyText.length,
+    });
     return fail(401, 'Invalid signature');
   }
 
