@@ -6,6 +6,23 @@ The platform never holds funds. It is an **immutable witness, not a custodial va
 
 ---
 
+## Project Status (May 2026)
+
+**Working now (confirmed in code/docs)**
+- Wallet-signed auth helpers and nonce flow are implemented in [frontend/src/lib/auth.ts](frontend/src/lib/auth.ts), [frontend/src/lib/walletAuthClient.ts](frontend/src/lib/walletAuthClient.ts), and [frontend/src/app/api/auth/nonce/route.ts](frontend/src/app/api/auth/nonce/route.ts).
+- Auth/session scaffolding exists in [frontend/src/providers/AuthProvider.tsx](frontend/src/providers/AuthProvider.tsx) and [frontend/src/providers/index.tsx](frontend/src/providers/index.tsx), and the wallet registration flow is available at `/walletAuthTest`.
+- The main dashboard route exists at `/dashboard` (see [frontend/src/app/dashboard/page.tsx](frontend/src/app/dashboard/page.tsx)), alongside the marketing pages under `/(marketing)`.
+- Core API routes for members, loans, treasury, and community queue are under [frontend/src/app/api](frontend/src/app/api).
+
+**In progress / not shipped yet (see [master_plan.md](master_plan.md) §11)**
+- Public visibility schema (`is_public`, `penalty_amount`, `coop_applications`) and related APIs are pending (no `phase3_visibility.sql` in [frontend/migrations](frontend/migrations) yet).
+- On-chain queue worker + cron scheduling, and overdue/defaulted background jobs are not present.
+- SuperUser COOP application workflow (API + UI) and `/(superuser)` route group are not present.
+- Role-based landing routes (`/dashboard/elder`, `/dashboard/owner`, `/superuser`) and `/pending-approval` page are not present.
+- Public Record Board live data depends on the visibility schema and API.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -28,7 +45,8 @@ Agartha-Kayak/
 ├── frontend/                     # Next.js application (UI + API routes)
 │   ├── migrations/               # Supabase SQL migrations
 │   │   ├── phase1_mvp_restructure.sql
-│   │   └── add_onchain_queue.sql
+│   │   ├── add_onchain_queue.sql
+│   │   └── phase2_security.sql
 │   ├── public/                   # Static assets (videos, images, icons)
 │   ├── src/
 │   │   ├── app/                  # Next.js App Router
@@ -41,9 +59,8 @@ Agartha-Kayak/
 │   │   │   │   ├── members/      # register, approve, pending, search
 │   │   │   │   └── treasury/     # reconciliation propose/sign/pending
 │   │   │   ├── Admin/            # Platform admin dashboard
-│   │   │   ├── dashboardTest/    # Role-based dashboards (member/elder/owner)
+│   │   │   ├── dashboard/        # Role-based dashboards (member/elder/owner)
 │   │   │   ├── pool/             # Treasury pool views
-│   │   │   ├── vaultTest/        # Post-registration confirmation page
 │   │   │   ├── walletAuthTest/   # Wallet connect + registration flow
 │   │   │   ├── layout.tsx        # Root layout (Mesh provider, fonts)
 │   │   │   └── globals.css       # Global Tailwind + theme styles
@@ -109,12 +126,9 @@ SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
 
 # Cardano (preprod network)
 BLOCKFROST_PROJECT_ID=<your-preprod-blockfrost-id>
-
-# API gate (used by server-to-server route auth)
-NEXT_PUBLIC_API_KAYAK_KEY=<a-shared-secret>
 ```
 
-> **Security note:** `NEXT_PUBLIC_API_KAYAK_KEY` is currently exposed to the browser bundle because of its prefix. This is a known issue tracked in the project's security backlog — do not use a production secret here until the auth model is migrated to wallet-signed requests.
+> **Security note:** Write routes use wallet-signed requests (see [frontend/docs/AUTH_CONTRACT.md](frontend/docs/AUTH_CONTRACT.md)). There is no shared browser-exposed API key in the current setup.
 
 ### 4. Start the dev server
 ```bash
@@ -129,7 +143,7 @@ The app runs on **http://localhost:3000**.
 |---|---|---|
 | Landing | `/` | Marketing site |
 | Wallet auth test | `/walletAuthTest` | Connect Lace, register a new alias, simulate auth |
-| Dashboard test | `/dashboardTest` | Role-based dashboards (member / elder / owner) |
+| Dashboard | `/dashboard` | Role-based dashboards (member / elder / owner) |
 | Pool | `/pool` | Treasury & on-chain queue views |
 | Admin | `/Admin` | Platform administration (community creation, role management) |
 
@@ -138,5 +152,6 @@ The app runs on **http://localhost:3000**.
 bun run build      # Production build (from frontend/)
 bun run start      # Run the production build
 bun run lint       # ESLint
+bun run test       # Vitest test run
 bun run commit     # Commitizen-guided conventional commit (from repo root)
 ```

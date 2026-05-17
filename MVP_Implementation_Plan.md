@@ -1,6 +1,6 @@
 # Agartha MVP Implementation Plan
 
-This plan breaks down the missing MVP features into 4 manageable phases. As requested, **execution will pause at the end of each phase** for your review and approval before proceeding to the next.
+This plan is a historical phase breakdown. Current status lives in [master_plan.md](./master_plan.md) §11 and the module files.
 
 ## Open Questions
 1. **Government ID Storage**: Should we assume uploaded IDs will be stored in Supabase Storage buckets?
@@ -10,7 +10,7 @@ This plan breaks down the missing MVP features into 4 manageable phases. As requ
 
 ## Proposed Changes
 
-### Phase 1: Database Restructuring & Foundational Roles - DONE
+### Phase 1: Database Restructuring & Foundational Roles - Mostly Shipped
 *Goal: Establish the correct data structure to support all upcoming features.*
 *   **Update `supabase_schema`**:
     *   **Members Table**: Expand `role` check constraint to include `owner` and `superuser`. Add an `id_document_url` field for KYC.
@@ -23,7 +23,7 @@ This plan breaks down the missing MVP features into 4 manageable phases. As requ
 
 ---
 
-### Phase 2: Governance & Treasury Security (Backend)-Done
+### Phase 2: Governance & Treasury Security (Backend) - Mostly Shipped
 *Goal: Secure the community funds and enforce the cooperative's democratic rules.*
 *   **Voting Threshold Logic**: Update the `api/loans/treasury/vote` endpoint to check if `approve` votes > 50% of total (Elders + Owner). If yes, automatically move loan to `approved`.
 *   **Reconciliation API**: Create endpoints for Elders to propose a manual treasury balance update and for other Elders to sign/approve it.
@@ -34,7 +34,7 @@ This plan breaks down the missing MVP features into 4 manageable phases. As requ
 
 ---
 
-### Phase 3: The "Witness" Mechanics (Backend + Integration)-Done
+### Phase 3: The "Witness" Mechanics (Backend + Integration) - Partially Shipped
 *Goal: Implement the core "Trustless Witness" features.*
 *   **Two-Step Repayment API**: Update repayment endpoints so a member logs an intent to pay, but it remains "pending" until an Elder/Owner hits an endpoint confirming real-world receipt.
 *   **Penalty & Overdue Cron/Logic**: Create a utility to check for overdue loans and apply penalty interest if the due date has passed without a confirmed payment.
@@ -44,7 +44,7 @@ This plan breaks down the missing MVP features into 4 manageable phases. As requ
 
 ---
 
-### Phase 4: UI/UX & Dashboards-Done
+### Phase 4: UI/UX & Dashboards - Partially Shipped
 *Goal: Bring the backend mechanics to life in the frontend.*
 *   **Network Queue Component**: Build the visual "MVP" component that shows pending on-chain receipts grouping together.
 *   **Reconciliation Dashboard**: Build the Elder UI for proposing and signing manual treasury updates.

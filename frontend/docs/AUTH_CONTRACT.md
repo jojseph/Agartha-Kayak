@@ -131,14 +131,7 @@ All error responses are JSON: `{ "error": "<reason>" }`.
 
 ## Dev stub
 
-While Module 1 is in progress, [`frontend/src/lib/auth.dev.ts`](../src/lib/auth.dev.ts) exports a `verifyWalletAuth` that reads `DEV_WALLET` from env vars and returns its `AuthContext` without any signing. Modules 2 and 3 may import from `auth.dev.ts` during development:
-
-```ts
-// during development only
-import { verifyWalletAuth } from '@/lib/auth.dev';
-```
-
-**This file MUST be deleted before Module 1's final merge.** At definition-of-done, a grep for `auth\.dev` in `src/` returns zero hits.
+The dev stub is **removed** in the current codebase. Use the real helper from `frontend/src/lib/auth.ts` for all routes. Any references to `auth.dev.ts` are obsolete.
 
 ## Out of scope
 

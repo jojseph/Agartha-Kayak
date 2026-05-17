@@ -29,8 +29,13 @@ Contains the application's routes and global layouts.
   - `layout.tsx`: Defines the header/footer shared across the landing page and marketing content.
   - `page.tsx`: The primary landing page (homepage).
   - `about/page.tsx`: The About Us page.
-- **`api/`**: Backend-less API routes.
-  - `health/route.ts`: A simple health check endpoint.
+- **`api/`**: API route handlers for auth, members, loans, treasury, and community data.
+  - `auth/nonce/route.ts`: Issues nonces for wallet-signed requests.
+  - `members/`, `loans/`, `treasury/`, `community/`, `admin/`: Core API domains.
+- **`Admin/`**: Platform admin dashboard (SuperUser surface; route group migration is pending).
+- **`dashboard/`**: Main role-aware dashboard UI.
+- **`pool/`**: Treasury pool views and queue UI.
+- **`walletAuthTest/`**: Wallet connection + registration flow (test surface).
 - **`layout.tsx`**: The root layout that wraps the entire application (HTML/Body tags).
 - **`globals.css`**: Main CSS file importing Tailwind and defining global styles.
 
@@ -44,6 +49,9 @@ Shared React logic.
 - `useMediaQuery.ts`: Used for detecting screen sizes in JavaScript.
 
 ### `src/lib/`
+- `auth.ts`: Wallet-signed request verification helpers.
+- `walletAuthClient.ts`: Client-side wallet auth flow (nonce + sign + fetch).
+- `balanceOps.ts`: Atomic treasury balance adjustments.
 - `utils.ts`: Includes `cn()` for merging Tailwind classes cleanly.
 - `constants.ts`: Stores hardcoded strings, navigation links, and SEO metadata.
 
@@ -52,4 +60,4 @@ Shared React logic.
 
 ---
 
-*Last Updated: April 25, 2026*
+*Last Updated: May 17, 2026*
