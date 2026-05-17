@@ -70,7 +70,7 @@ export default function WalletAuthTestPage() {
           setAppState('rejected');
         } else {
           setAppState('authenticated'); 
-          router.push('/dashboard');
+          router.push('/pending-approval');
         }
       } else {
         setAppState('needs_alias'); 
