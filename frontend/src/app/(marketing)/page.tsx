@@ -4,11 +4,14 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Wallet, Lock, LayoutDashboard } from 'lucide-react';
+import { useAuth } from "@/providers/AuthProvider";
 
 export default function AgarthaLanding() {
   const router = useRouter();
+  const { status, member } = useAuth();
 
   return (
+    
     <main className="relative min-h-screen w-full overflow-hidden isolate bg-black text-white font-sans">
       {/* Custom Animations injected via styled block for plug-and-play ease */}
       <style dangerouslySetInnerHTML={{
@@ -22,6 +25,8 @@ export default function AgarthaLanding() {
           opacity: 0;
         }
       `}} />
+
+      <div>Current Status: {status}</div>
 
       {/* Background Video */}
       <video
