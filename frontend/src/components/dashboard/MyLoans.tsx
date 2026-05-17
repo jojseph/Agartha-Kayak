@@ -1,5 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import { useWallet } from '@meshsdk/react';
+import { resolveWalletAddress, walletAuthFetch } from '@/lib/walletAuthClient';
 
 // Loan structures and their states as defined by the lifecycle documentation
 interface Loan {
@@ -11,6 +13,7 @@ interface Loan {
 }
 
 export default function MyLoans() {
+  const { wallet, connected } = useWallet();
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -53,17 +56,23 @@ export default function MyLoans() {
   const handleRepaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedLoan) return;
+    if (!connected || !wallet) {
+      alert('Connect your wallet first.');
+      return;
+    }
     setSubmitting(true);
 
     try {
-      const res = await fetch('/api/loans/repayment/submit', {
+      const payerAddress = await resolveWalletAddress(wallet);
+      const res = await walletAuthFetch(wallet, '/api/loans/repayment/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           loanId: selectedLoan.id,
+          payerAddress,
           amount: parseFloat(repayAmount),
           method: repayMethod,
-          reference: repayRef,
+          referenceCode: repayRef,
         }),
       });
 
@@ -72,9 +81,13 @@ export default function MyLoans() {
         setIsModalOpen(false);
         setRepayAmount('');
         setRepayRef('');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Failed to log repayment: ${err.error ?? res.status}`);
       }
     } catch (err) {
       console.error('Repayment submission network error', err);
+      alert('Network error during repayment submission.');
     } finally {
       setSubmitting(false);
     }

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWallet } from '@meshsdk/react';
 import { ShieldCheck, PlusCircle, UserCog, Landmark, ChevronLeft } from 'lucide-react';
+import { resolveWalletAddress, walletAuthFetch } from '@/lib/walletAuthClient';
 
 export default function AdminPage() {
     const router = useRouter();
@@ -41,7 +42,9 @@ export default function AdminPage() {
                 return;
             }
             try {
-                const address = await wallet.getChangeAddress();
+                // Canonical bech32 address — same resolver every surface uses,
+                // so the member lookup matches what registration stored.
+                const address = await resolveWalletAddress(wallet);
                 const res = await fetch('/api/members', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -95,7 +98,7 @@ export default function AdminPage() {
         e.preventDefault();
         setCommLoading(true);
         try {
-            const res = await fetch('/api/admin/communities', {
+            const res = await walletAuthFetch(wallet, '/api/admin/communities', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -127,7 +130,7 @@ export default function AdminPage() {
         
         setRoleLoading(true);
         try {
-            const res = await fetch('/api/admin/members', {
+            const res = await walletAuthFetch(wallet, '/api/admin/members', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -154,7 +157,7 @@ export default function AdminPage() {
         
         setTreasuryLoading(true);
         try {
-            const res = await fetch('/api/admin/communities', {
+            const res = await walletAuthFetch(wallet, '/api/admin/communities', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

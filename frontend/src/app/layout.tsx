@@ -1,4 +1,3 @@
-import MeshProviderWrapper from '@/components/MeshProviderWrapper';
 import type { Metadata } from "next";
 import { fontSans, fontHeading } from "@/styles/fonts";
 import { Providers } from "@/providers";
@@ -34,9 +33,9 @@ export default function RootLayout({
       </head>
       <body
         className={`${fontSans.variable} ${fontHeading.variable} font-sans antialiased`}>
-          <MeshProviderWrapper>
+          <Providers>
             {children}
-          </MeshProviderWrapper>
+          </Providers>
       </body>
     </html>
   );

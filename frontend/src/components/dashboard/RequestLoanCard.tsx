@@ -1,10 +1,14 @@
 'use client';
 import React, { useState } from 'react';
+import { useWallet } from '@meshsdk/react';
+import { resolveWalletAddress, walletAuthFetch } from '@/lib/walletAuthClient';
 
 export default function RequestLoanCard() {
+  const { wallet, connected } = useWallet();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loanType, setLoanType] = useState<'P2P' | 'Treasury'>('P2P');
   const [amount, setAmount] = useState('');
+  const [purpose, setPurpose] = useState('');
   const [collateral, setCollateral] = useState(''); // Mandatory per Module 1
   const [submitting, setSubmitting] = useState(false);
 
@@ -15,17 +19,29 @@ export default function RequestLoanCard() {
 
   const handleLoanSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!connected || !wallet) {
+      alert('Connect your wallet first.');
+      return;
+    }
     setSubmitting(true);
 
     try {
-      // Direct endpoint setup to coordinate with Raymond's backend handlers
-      const endpoint = loanType === 'Treasury' ? '/api/loans/treasury/request' : '/api/loans/p2p/request';
-      
-      const payload = loanType === 'Treasury' 
-        ? { amount: parseFloat(amount), collateral } // Collateral mandatory for Treasury
-        : { amount: parseFloat(amount) };
+      const borrowerAddress = await resolveWalletAddress(wallet);
 
-      const res = await fetch(endpoint, {
+      // NOTE: peer loans also need a lenderAddress (counterparty picker) —
+      // that UX is Ben's Task 2.3 and is out of scope here. Treasury is the
+      // path exercised by the auth-integration verification.
+      const endpoint =
+        loanType === 'Treasury'
+          ? '/api/loans/treasury/request'
+          : '/api/loans/peer/request';
+
+      const payload =
+        loanType === 'Treasury'
+          ? { borrowerAddress, amount: parseFloat(amount), purpose, collateral }
+          : { borrowerAddress, amount: parseFloat(amount), purpose };
+
+      const res = await walletAuthFetch(wallet, endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -35,12 +51,15 @@ export default function RequestLoanCard() {
         alert(`${loanType} Loan Request submitted successfully! Status is now pending.`);
         setIsModalOpen(false);
         setAmount('');
+        setPurpose('');
         setCollateral('');
       } else {
-        alert('Failed to submit request. Please verify connection credentials.');
+        const err = await res.json().catch(() => ({}));
+        alert(`Failed to submit request: ${err.error ?? res.status}`);
       }
     } catch (err) {
       console.error('Network failure during loan application submission', err);
+      alert('Network error during submission.');
     } finally {
       setSubmitting(false);
     }
@@ -89,6 +108,18 @@ export default function RequestLoanCard() {
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="e.g. 250"
+                  className="w-full h-10 px-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-black"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Purpose</label>
+                <input
+                  type="text"
+                  required
+                  value={purpose}
+                  onChange={(e) => setPurpose(e.target.value)}
+                  placeholder="e.g. Seed capital for rice harvest"
                   className="w-full h-10 px-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-black"
                 />
               </div>

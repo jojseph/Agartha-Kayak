@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import ConnectionSuccess from '@/components/ConnectionSuccess';
 import { useWallet } from '@meshsdk/react';
 import { useRouter } from 'next/navigation';
+import { resolveWalletAddress, walletAuthFetch } from '@/lib/walletAuthClient';
 
 export default function WalletAuthTestPage() {
   const { connected, wallet, connect, disconnect } = useWallet();
@@ -33,8 +34,7 @@ export default function WalletAuthTestPage() {
 
   useEffect(() => {
     if (connected) {
-      wallet.getUsedAddresses().then((addrs) => {
-        const currentAddress = addrs[0];
+      resolveWalletAddress(wallet).then((currentAddress) => {
         setAddress(currentAddress);
         checkLedger(currentAddress);
       }).catch((err) => {
@@ -54,12 +54,10 @@ export default function WalletAuthTestPage() {
     setErrorMessage('');
     
     try {
+      // Profile lookup is a plain read — not signature-gated (AUTH_CONTRACT).
       const res = await fetch('/api/members', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ walletAddress: walletAddr }),
       });
       const data = await res.json();
@@ -87,12 +85,11 @@ export default function WalletAuthTestPage() {
     setErrorMessage('');
 
     try {
-      const res = await fetch('/api/members/register', {
+      // Registration is signature-gated (verifyWalletSignature) but does NOT
+      // require existing membership — walletAuthFetch handles the nonce+sign.
+      const res = await walletAuthFetch(wallet, '/api/members/register', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': process.env.NEXT_PUBLIC_API_KAYAK_KEY || '',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ walletAddress: address, alias, email, communityId, barangay }),
       });
 
