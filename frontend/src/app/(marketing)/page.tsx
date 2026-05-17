@@ -62,7 +62,7 @@ export default function AgarthaLanding() {
             <div className="hidden md:flex items-center gap-8">
               {[
                 { name: 'How It Works', path: '/how-it-works' },
-                { name: 'Public Records', path: '#' },
+                { name: 'Public Records', path: '/public-records' },
                 { name: 'FAQ', path: '/faq' }
               ].map((link) => (
                 <Link

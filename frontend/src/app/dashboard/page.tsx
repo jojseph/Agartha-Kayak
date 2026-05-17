@@ -296,7 +296,15 @@ export default function DashboardTestPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ walletAddress: addr })
-        }).then(r => r.json()).then(d => { if (d.member) setMemberData(d.member); }).catch(console.error);
+        }).then(r => r.json()).then(d => { 
+          if (d.member) {
+            setMemberData(d.member); 
+            if (d.member.status === 'pending') {
+                router.push('/pending-approval');
+              }
+          }
+        }).catch(console.error);
+
         fetch(`/api/members/search?exclude=${addr}`)
           .then(r => r.json()).then(d => setNeighbors(d.members || [])).catch(console.error);
       }).catch(console.error);
@@ -727,6 +735,85 @@ export default function DashboardTestPage() {
                 }}>Review Now</button>
               </div>
             </>
+          )}
+
+          {/* --- TASK 2.5: OWNER-ONLY ADMINISTRATIVE UTILITIES --- */}
+          {memberData?.role === 'owner' && (
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mb-4 transition-all hover:border-gray-300">
+              <div className="flex items-center gap-2 mb-4 text-[#0A0A0A]">
+                <Shield size={18} className="text-red-600" />
+                <h3 className="text-base font-bold tracking-tight">Owner Management Console</h3>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Adjust Share Capital Configuration */}
+                <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/50">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    Cooperative Share Capital Goal
+                  </label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="number" 
+                      placeholder="e.g. 50000" 
+                      className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-gray-900"
+                      id="owner-share-capital"
+                    />
+                    <button 
+                      onClick={async () => {
+                        const input = document.getElementById('owner-share-capital') as HTMLInputElement;
+                        if (!input?.value) return alert('Please specify a capital allocation threshold.');
+                        try {
+                          const res = await walletAuthFetch(wallet, '/api/owner/settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ shareCapital: Number(input.value), address })
+                          });
+                          if (res.ok) alert('Cooperative governance parameters updated successfully on-chain!');
+                        } catch (err) { console.error(err); }
+                      }}
+                      className="bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors"
+                    >
+                      Update Threshold
+                    </button>
+                  </div>
+                </div>
+
+                {/* Authority Promotion Panel */}
+                <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/50">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    Elevate Member to Elder Status
+                  </label>
+                  <div className="flex gap-2">
+                    <select 
+                      className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-gray-900 appearance-none"
+                      id="owner-promote-target"
+                    >
+                      <option value="">Select an active member...</option>
+                      {neighbors.map(n => (
+                        <option key={n.wallet_address} value={n.wallet_address}>{n.alias}</option>
+                      ))}
+                    </select>
+                    <button 
+                      onClick={async () => {
+                        const select = document.getElementById('owner-promote-target') as HTMLSelectElement;
+                        if (!select?.value) return alert('Please select a valid member candidate.');
+                        try {
+                          const res = await walletAuthFetch(wallet, '/api/owner/promote', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ targetAddress: select.value, ownerAddress: address })
+                          });
+                          if (res.ok) alert('Member successfully elevated to Elder council.');
+                        } catch (err) { console.error(err); }
+                      }}
+                      className="bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors"
+                    >
+                      Grant Authority
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
 
           <div className="elder-panel">
