@@ -1,7 +1,7 @@
 import MeshProviderWrapper from '@/components/MeshProviderWrapper';
 import type { Metadata } from "next";
 import { fontSans, fontHeading } from "@/styles/fonts";
-import { Providers } from "@/providers";
+import { AuthProvider } from '@/providers/AuthProvider';
 import { siteConfig } from "@/config/site";
 import "./globals.css";
 
@@ -35,7 +35,12 @@ export default function RootLayout({
       <body
         className={`${fontSans.variable} ${fontHeading.variable} font-sans antialiased`}>
           <MeshProviderWrapper>
-            {children}
+            
+            {/* INLINED AUTH PROVIDER - No extra functions to confuse Next.js */}
+            <AuthProvider>
+              {children}
+            </AuthProvider>
+            
           </MeshProviderWrapper>
       </body>
     </html>
