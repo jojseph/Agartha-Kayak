@@ -1,6 +1,6 @@
 # Agartha Kayak — Master Plan
 
-**Status:** Proposed
+**Status:** In progress — post-integration reconciliation (Module 1 shipped; see §11)
 **Owner:** kuzu
 **Target:** Ship a demo-ready MVP that fulfills the DOCS.md "Immutable Witness" philosophy and closes every item in TODO.md + the 5 🔴 blockers from the initial code-reviewer assessment.
 
@@ -104,38 +104,53 @@ These are the **frozen interfaces** between modules. They are designed once, pub
 
 **Published by:** kuzu, day 1, as `frontend/docs/AUTH_CONTRACT.md`.
 
-**Wire format:** Every authenticated write request carries
+> **⚠️ Revision (post-integration):** The format below was corrected to match
+> what Module 1 actually shipped. The original 3-part format here was never
+> built — CIP-30 verification requires the COSE key, so the wire format is
+> **4-part**, `signData`'s payload must be **hex-encoded**, and the helper
+> **returns a union** (it does not throw). **`frontend/docs/AUTH_CONTRACT.md`
+> is the single source of truth**; this section is a summary that must track it.
+
+**Wire format:** Every authenticated write request carries four colon-separated parts:
 
 ```
-Authorization: WalletSig <wallet_address>:<nonce>:<signature_hex>
+Authorization: WalletSig <walletAddress>:<nonce>:<key>:<signature>
 ```
 
-where the signature is a CIP-30 `signData` over the canonical message `${method} ${path} ${nonce} ${body_sha256}`. Nonces are single-use and expire after 5 minutes.
+- `walletAddress` — **bech32** (`addr_test1…` on preprod). Resolved by the shared `resolveWalletAddress()` so every surface agrees on identity.
+- `nonce` — 48-hex from `POST /api/auth/nonce` (single-use, 5-min TTL, `auth_nonces` table).
+- `key` / `signature` — the CIP-30 `signData` result fields (COSE_Key / COSE_Sign1, hex).
 
-**Server helper signature:**
+Canonical signed message: `${METHOD} ${pathname} ${nonce} ${sha256(body)}` (uppercase method; empty body → sha256 of empty string). The **client signs `toHex(message)`**; the server passes the same hex to Mesh `checkSignature` (which does `Buffer.from(data,"hex")` internally — passing the raw string fails).
+
+**Server helper signature (actual):**
 
 ```ts
 // frontend/src/lib/auth.ts
+export type Role = 'member' | 'elder' | 'owner' | 'superuser';
 export type AuthContext = {
   walletAddress: string;
-  role: 'member' | 'elder' | 'owner' | 'superuser';
+  role: Role;
   communityId: string | null;
+  alias: string;                    // present in the real impl
 };
 
+// Returns the context OR a NextResponse — the caller checks and returns it.
+// Does NOT throw. Use the `if (auth instanceof NextResponse) return auth;` pattern.
 export async function verifyWalletAuth(
   request: Request,
-  required?: { role?: AuthContext['role'][]; communityId?: string }
-): Promise<AuthContext>;  // throws 401/403 NextResponse on failure
+  requirement?: { role?: Role[]; communityId?: string }
+): Promise<AuthContext | NextResponse>;
+
+// For pre-membership routes (e.g. /api/members/register) — signature only:
+export async function verifyWalletSignature(
+  request: Request
+): Promise<{ walletAddress: string } | NextResponse>;
 ```
 
-**Dev stub (during weeks 1–2 before Module 1 ships):**
+**Client helper (shipped under Module 1, not Module 2):** `frontend/src/lib/walletAuthClient.ts` exports `resolveWalletAddress(wallet)` and `walletAuthFetch(wallet, url, opts)` (the nonce→sign→fetch dance). See §11.
 
-```ts
-// frontend/src/lib/auth.dev.ts — DELETE before merge
-export async function verifyWalletAuth() {
-  return { walletAddress: process.env.DEV_WALLET!, role: 'owner', communityId: process.env.DEV_COMM! };
-}
-```
+**Dev stub:** ❌ **Removed.** `auth.dev.ts` and the `DEV_WALLET` bypass were deleted when Module 1 shipped (DoD: `grep auth.dev` / `grep DEV_WALLET` → 0). Modules 2 & 3 code against the **real** `verifyWalletAuth` directly — there is no stub to import.
 
 ### 5.2 Migration Ownership
 
@@ -150,7 +165,14 @@ Both ship in week 1 so Modules 2 and 3 can read the columns immediately.
 
 ### 5.3 Frontend Routing Convention
 
-The new production app lives under a `(app)` route group (owned by Module 2). The existing `*Test` routes (`/walletAuthTest`, `/dashboardTest`, `/vaultTest`) stay live as a fallback throughout the build but are deleted in week 3 before final merge.
+> **⚠️ Revision (post-integration):** The `(app)` route-group plan was
+> **abandoned**. Joseph's pre-existing dashboard (the real Member dashboard —
+> see §11 and ben.md Task 2.3) is self-gating and lives directly at
+> `/dashboard`, not under a route group with a guard layout.
+
+- The production dashboard is **`src/app/dashboard/page.tsx`** (Joseph's work, restored from git, route renamed from `dashboardTest`, retrofitted to wallet-signed auth). It self-gates on wallet connection; there is **no `(app)/layout.tsx` guard** (it was removed).
+- Session continuity across refresh is owned by a global `WalletSession` component in `providers/index.tsx` (persist + restore the connected wallet; an explicit sign-out flag blocks silent re-attach). Auth pages must not treat raw Mesh `connected` as "logged in" — check the sign-out intent.
+- `*Test` routes: `dashboardTest` was **renamed** to `dashboard` (not deleted — it was Joseph's real page). `vaultTest` deleted. `walletAuthTest` remains the registration/connect surface until a `/login` replaces it.
 
 ---
 
@@ -214,9 +236,33 @@ Each module owner records significant decisions as a short ADR in `frontend/docs
 - **ADR-002** (Module 1): Atomic balance updates via Postgres RPC vs. row-level locking
 - **ADR-003** (Module 3): Synchronous submission worker vs. external scheduler (Vercel Cron vs. Supabase Edge Functions)
 - **ADR-004** (Module 2): Auth state via React Context vs. SWR vs. Zustand
+- **ADR-005** (Module 1): Canonical **bech32** wallet identity via a single `resolveWalletAddress()` — wallets/Mesh return raw hex; every surface (register, nonce, header, member lookup) must agree or lookups silently miss
+- **ADR-006** (Module 1): Client auth helper (`walletAuthClient`) + session persistence (`WalletSession`) built under Module 1, not Module 2 — they are the consumer side of the auth contract and shipped with it
 
 Format follows the template in the persona file.
 
 ---
 
-**Next step:** Each owner reads their module file ([kuzu.md](./kuzu.md), [ben.md](./ben.md), [raymond.md](./raymond.md)) and confirms scope before week 1 kickoff.
+## 11. Status Reconciliation (post-integration)
+
+The §6 week-by-week sequencing is **superseded** by this snapshot — it reflects what actually shipped, not the original plan.
+
+### Module 1 — Security & Auth: ✅ shipped (scope grew)
+- `verifyWalletSignature` + `verifyWalletAuth`, `phase2_security.sql` (nonce table + `adjust_treasury_balance` RPC), `balanceOps.ts`, all write routes wallet-sig-gated, self-vote / one-active-loan / SuperUser gate done, tests green, `tsc` clean, **0** `NEXT_PUBLIC_API_KAYAK_KEY` / `auth.dev` / `DEV_WALLET` refs.
+- **Scope absorbed from Module 2** (out of necessity — the contract's consumer side had to exist to test the producer): `walletAuthClient.ts` (`resolveWalletAddress` + `walletAuthFetch`), the `AuthProvider` fix, `WalletSession` (refresh-safe session + real sign-out). See ADR-005/006.
+- **Outstanding:** ADR-001, ADR-002 (and ADR-005/006) not yet written.
+
+### Module 2 — Frontend & UX: re-scoped (large parts already existed)
+- **Joseph's restored `/dashboard` already implements** a role-aware dashboard: treasury/peer loan request, treasury vote, member approve, reconciliation propose/sign, Network Queue, Public Record Board, community stats — all retrofitted to `walletAuthFetch` + bech32. This **overlaps Tasks 2.3, 2.4, 2.6, 2.9, 2.10**.
+- Ben's WIP branch (`origin/ben` `4897d8e`) is a destructive backup (deletes auth.ts/balanceOps.ts, reverts routes to the leaked key) — **do not merge**. Its only salvageable pieces are 3 Elder components that call **phantom `/api/elder/*` endpoints that exist nowhere** — they are largely **redundant** with Joseph's dashboard (which calls the real endpoints).
+- Ben's real remaining job is now **audit Joseph's dashboard against the DoD and fill gaps**, not rebuild. See revised ben.md.
+
+### Module 3 — Blockchain & Workers: unblocked, unchanged scope
+- Module 1 shipped, so Raymond codes against the **real** `verifyWalletAuth` / `adjustTreasuryBalance` — **no `auth.dev.ts` stub** (deleted). `phase3_visibility.sql` still owned & pending. Do **not** build `/api/elder/*` (phantom). See revised raymond.md.
+
+### Demo-readiness vs §2 Definition of Done
+🔴 blockers 1–5: **all green** (Module 1). TODO.md #1,#2,#4(rule),#5(self-vote): green. Still open: #3 Reconciliation UI (exists in Joseph's dashboard — needs audit), #5 Public Record Board live data (needs `is_public` from Module 3), #6 overdue/`defaulted` (Module 3), #7 SuperUser COOP workflow (Module 3 API + Admin UI), #8 on-chain submission (Module 3), #9 visibility toggle (Module 3), #10 two-step repayment UI (audit Joseph's dashboard).
+
+---
+
+**Next step:** Each owner re-reads their module file ([kuzu.md](./kuzu.md), [ben.md](./ben.md), [raymond.md](./raymond.md)) **and §11 above** — the original sequencing no longer applies.

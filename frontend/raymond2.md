@@ -244,10 +244,19 @@ COMMIT;
 
 ## Contracts you consume
 
-| From | What | Until ready, use |
+> **⚠️ Revision (post-integration):** Module 1 has **shipped** — there is no
+> stub and no placeholder. Code against the real helpers directly. Also: the
+> `/api/elder/*` endpoints referenced by Ben's WIP components **do not exist
+> and are not yours to build** (phantom — Joseph's dashboard already calls the
+> real `/api/loans/treasury/vote`, `/api/members/approve`, etc.). And the wire
+> contract is **4-part** (`walletAddress:nonce:key:signature`) with hex-encoded
+> signData — see master_plan §5.1 / `frontend/docs/AUTH_CONTRACT.md`.
+
+| From | What | Status |
 |---|---|---|
-| kuzu (Module 1) | `verifyWalletAuth()` helper, `AuthContext` shape | `auth.dev.ts` stub returning a SuperUser context for worker routes |
-| kuzu (Module 1) | `adjustTreasuryBalance()` for COOP creation and overdue penalty credit | the existing read-then-write pattern as a temporary placeholder, but mark it with `// TODO(M1): replace` |
+| kuzu (Module 1) | `verifyWalletAuth()` / `verifyWalletSignature()` from `@/lib/auth` | ✅ **shipped — import the real thing.** `auth.dev.ts` is **deleted**; do not reference it. Returns `AuthContext \| NextResponse` (no throw): `const a = await verifyWalletAuth(req,{role:['superuser']}); if (a instanceof NextResponse) return a;` |
+| kuzu (Module 1) | `adjustTreasuryBalance()` from `@/lib/balanceOps` | ✅ **shipped — call it directly.** No read-then-write placeholder, no `// TODO(M1)` |
+| kuzu (Module 1) | Worker auth | reuse `verifyWalletAuth(req,{role:['superuser']})` or a `WORKER_TRIGGER_SECRET`; record the choice in ADR-003 |
 
 ## Out of scope for this module
 
