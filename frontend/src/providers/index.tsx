@@ -1,11 +1,14 @@
-"use client";
+'use client';
+import { MeshProvider } from "@meshsdk/react";
+import { AuthProvider } from "./AuthProvider";
 
-import React from "react";
-
-/**
- * Root providers wrapper.
- * Add ThemeProvider, QueryClientProvider, etc. here.
- */
 export function Providers({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <MeshProvider>
+      {/* AuthProvider must be INSIDE MeshProvider so it can use useWallet() */}
+      <AuthProvider>
+        {children}
+      </AuthProvider>
+    </MeshProvider>
+  );
 }

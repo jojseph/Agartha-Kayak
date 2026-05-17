@@ -72,7 +72,7 @@ export default function WalletAuthTestPage() {
           setAppState('rejected');
         } else {
           setAppState('authenticated'); 
-          router.push(`/dashboardTest?alias=${encodeURIComponent(data.member.alias)}`);
+          router.push('/dashboard');
         }
       } else {
         setAppState('needs_alias'); 
