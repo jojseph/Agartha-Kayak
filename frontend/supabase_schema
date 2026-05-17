@@ -20,7 +20,6 @@ CREATE TABLE public.members (
   alias character varying NOT NULL UNIQUE,
   email text,
   role text DEFAULT 'member'::text CHECK (role = ANY (ARRAY['member'::text, 'elder'::text, 'owner'::text, 'superuser'::text])),
-  trust_score numeric DEFAULT 0.00 CHECK (trust_score >= 0::numeric AND trust_score <= 100::numeric),
   status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])),
   id_document_url text,
   created_at timestamp with time zone DEFAULT now(),

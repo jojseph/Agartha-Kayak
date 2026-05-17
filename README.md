@@ -46,7 +46,8 @@ Agartha-Kayak/
 │   ├── migrations/               # Supabase SQL migrations
 │   │   ├── phase1_mvp_restructure.sql
 │   │   ├── add_onchain_queue.sql
-│   │   └── phase2_security.sql
+│   │   ├── phase2_security.sql
+│   │   └── phase2_remove_trust_score.sql
 │   ├── public/                   # Static assets (videos, images, icons)
 │   ├── src/
 │   │   ├── app/                  # Next.js App Router
@@ -67,7 +68,7 @@ Agartha-Kayak/
 │   │   ├── components/           # UI, layout, pool, and wallet components
 │   │   ├── config/site.ts        # Site metadata
 │   │   ├── hooks/                # Custom React hooks
-│   │   ├── lib/                  # blockfrost, supabaseAdmin, trustEngine, enqueueReceipt, utils
+│   │   ├── lib/                  # blockfrost, supabaseAdmin, enqueueReceipt, utils
 │   │   ├── providers/            # React context providers
 │   │   ├── services/api.ts       # Centralized fetch helpers
 │   │   ├── styles/fonts.ts       # Font loaders (Tenon, SpaceWeb)
@@ -112,6 +113,8 @@ bun install
 In your Supabase dashboard, open the SQL Editor and run, in order:
 1. [`frontend/migrations/phase1_mvp_restructure.sql`](./frontend/migrations/phase1_mvp_restructure.sql)
 2. [`frontend/migrations/add_onchain_queue.sql`](./frontend/migrations/add_onchain_queue.sql)
+3. [`frontend/migrations/phase2_security.sql`](./frontend/migrations/phase2_security.sql)
+4. [`frontend/migrations/phase2_remove_trust_score.sql`](./frontend/migrations/phase2_remove_trust_score.sql)
 
 The full reference schema is in [`frontend/supabase_schema`](./frontend/supabase_schema) (context only — do not execute as-is).
 

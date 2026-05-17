@@ -27,7 +27,7 @@ export async function GET(request: Request) {
 
         let query = supabaseAdmin
             .from('members')
-            .select('wallet_address, alias, trust_score, barangay');
+            .select('wallet_address, alias, barangay');
 
         // 2. Filter by same organization
         if (userCommunityId) {

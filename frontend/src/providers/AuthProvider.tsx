@@ -12,7 +12,6 @@ export interface Member {
   role: 'member' | 'elder' | 'owner' | 'superuser';
   community_id: string | null;
   status: 'pending' | 'approved' | 'rejected';
-  trust_score?: number;
 }
 
 interface AuthContextType {

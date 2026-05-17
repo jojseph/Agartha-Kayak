@@ -125,6 +125,7 @@ export default function AgarthaLanding() {
           {/* Primary CTA */}
           <button
             type="button"
+            // onClick={() => router.push('/pool')}
             className="inline-flex items-center gap-2 bg-white text-black py-3.5 px-8 rounded-full text-base font-semibold hover:bg-gray-100 transition-colors animate-fade-in-up"
             style={{ animationDelay: '0.5s' }}
           >
