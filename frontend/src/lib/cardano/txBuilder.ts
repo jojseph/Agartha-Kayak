@@ -1,5 +1,5 @@
 import { BlockFrostAPI } from '@blockfrost/blockfrost-js';
-import { BlockfrostProvider, MeshTxBuilder } from '@meshsdk/core';
+import { BlockfrostProvider, MeshTxBuilder, MeshWallet } from '@meshsdk/core';
 
 function getCardanoNetwork(projectId: string): 'mainnet' | 'preview' | 'preprod' {
   if (projectId.startsWith('preprod')) return 'preprod';
@@ -116,13 +116,34 @@ export async function buildTxWithMetadata(
     params: protocolParameters,
   });
 
+  const utxos = await provider.fetchAddressUTxOs(submitterAddress);
+  if (!utxos || utxos.length === 0) {
+    throw new Error(`No UTXOs found for submitter address ${submitterAddress}`);
+  }
+
   builder.setNetwork(network);
   builder.changeAddress(submitterAddress);
   builder.metadataValue(label, chunkMetadataStrings(metadata) as object);
-  builder.signingKey(submitterSkey);
+  builder.selectUtxosFrom(utxos);
 
   const txHex = await builder.complete();
-  const txHash = await builder.submitTx(txHex);
+
+  const wallet = new MeshWallet({
+    networkId: network === 'mainnet' ? 1 : 0,
+    key: {
+      type: 'cli',
+      payment: submitterSkey,
+    },
+    fetcher: provider,
+    submitter: provider,
+  });
+
+  if (wallet.init) {
+    await wallet.init();
+  }
+
+  const signedTx = await wallet.signTx(txHex);
+  const txHash = await wallet.submitTx(signedTx);
 
   if (!txHash || typeof txHash !== 'string') {
     throw new Error('Cardano transaction submission failed to return a tx hash');
@@ -131,12 +152,19 @@ export async function buildTxWithMetadata(
   return txHash;
 }
 
-export async function fetchTxBlockNumber(txHash: string): Promise<number | null> {
+export async function fetchTxDetails(txHash: string): Promise<{ blockNumber: number; fee: number } | null> {
   try {
     const tx = await getBlockfrostClient().txs(txHash);
-    return typeof tx.block_height === 'number' ? tx.block_height : null;
+    if (typeof tx.block_height === 'number') {
+      return {
+        blockNumber: tx.block_height,
+        fee: parseInt(tx.fees, 10), // lovelaces
+      };
+    }
+    return null;
   } catch (error) {
     console.error('Unable to fetch Blockfrost tx info for', txHash, error);
     return null;
   }
 }
+
