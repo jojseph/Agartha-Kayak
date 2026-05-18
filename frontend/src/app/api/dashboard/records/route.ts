@@ -1,54 +1,111 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { collectPublicRecordWallets, formatQueueRecordForPublicBoard } from '@/lib/publicRecordFormatting';
 
 export const revalidate = 0;
+
+const LOAN_RECORD_TYPES = [
+    'loan_approved',
+    'loan_rejected',
+    'peer_loan_approved',
+    'peer_loan_rejected',
+    'peer_loan_settled',
+    'loan_defaulted',
+];
 
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
         const address = searchParams.get('address');
-        
-        // Fetch loans, joining with members to get aliases
-        const { data, error } = await supabaseAdmin
-            .from('loans')
-            .select('*, borrower:members!loans_borrower_address_fkey(alias), lender:members!loans_lender_address_fkey(alias)')
+
+        let communityId: string | null = null;
+        if (address) {
+            const { data: member, error: memberError } = await supabaseAdmin
+                .from('members')
+                .select('community_id')
+                .eq('wallet_address', address)
+                .maybeSingle();
+
+            if (memberError) {
+                console.error('Error resolving dashboard member community:', memberError);
+                return NextResponse.json({ error: 'Failed to resolve community' }, { status: 500 });
+            }
+
+            communityId = member?.community_id ?? null;
+        }
+
+        let query = supabaseAdmin
+            .from('onchain_queue')
+            .select(`
+                queue_id,
+                community_id,
+                record_type,
+                reference_id,
+                member_address,
+                summary,
+                estimated_bytes,
+                status,
+                batch_id,
+                tx_hash,
+                block_number,
+                created_at,
+                etched_at,
+                onchain_payload,
+                communities (
+                    name
+                )
+            `)
             .order('created_at', { ascending: false })
             .limit(50);
 
+        if (communityId) {
+            query = query.eq('community_id', communityId);
+        }
+
+        const { data, error } = await query;
+
         if (error) {
-            console.error('Error fetching dashboard records:', error);
+            console.error('Error fetching dashboard public records:', error);
             return NextResponse.json({ error: 'Failed to fetch records' }, { status: 500 });
         }
 
-        const formatted = data.map((loan: any) => {
-            let fromName = '';
-            const toName = loan.borrower?.alias || 'Unknown Borrower';
-            
-            if (loan.loan_type === 'treasury') {
-                fromName = 'Cooperative Treasury';
-            } else {
-                fromName = loan.lender?.alias || 'Unknown Lender';
-            }
+        const records = data || [];
+        const walletAddresses = collectPublicRecordWallets(records as any[]);
+        let aliasMap: Record<string, string> = {};
 
-            // Create a shorter version of the txHash or ID for the UI
-            const displayHash = loan.tx_hash 
-                ? loan.tx_hash.substring(0, 6) + '…' + loan.tx_hash.substring(loan.tx_hash.length - 4)
-                : loan.loan_id.substring(0, 6) + '…' + loan.loan_id.substring(loan.loan_id.length - 4);
+        if (walletAddresses.length > 0) {
+            const { data: members } = await supabaseAdmin
+                .from('members')
+                .select('wallet_address, alias')
+                .in('wallet_address', walletAddresses);
 
-            return {
-                id: loan.loan_id,
-                fullHash: loan.tx_hash || loan.loan_id,
-                displayHash,
-                type: loan.loan_type === 'treasury' ? 'treasury' : 'member',
-                purpose: loan.purpose || 'Unknown',
-                amount: loan.amount,
-                fromName,
-                toName,
-                timestampStr: new Date(loan.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' — ' + new Date(loan.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-                shortDate: new Date(loan.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric' }),
-                isPublic: loan.is_public || false
-            };
-        });
+            aliasMap = (members || []).reduce((acc: Record<string, string>, member: any) => {
+                acc[member.wallet_address] = member.alias;
+                return acc;
+            }, {});
+        }
+
+        const loanReferenceIds = Array.from(new Set(
+            records
+                .filter((record: any) => LOAN_RECORD_TYPES.includes(record.record_type))
+                .map((record: any) => record.reference_id)
+                .filter(Boolean)
+        ));
+        let visibilityMap: Record<string, boolean> = {};
+
+        if (loanReferenceIds.length > 0) {
+            const { data: loans } = await supabaseAdmin
+                .from('loans')
+                .select('loan_id, is_public')
+                .in('loan_id', loanReferenceIds);
+
+            visibilityMap = (loans || []).reduce((acc: Record<string, boolean>, loan: any) => {
+                acc[loan.loan_id] = Boolean(loan.is_public);
+                return acc;
+            }, {});
+        }
+
+        const formatted = records.map((record: any) => formatQueueRecordForPublicBoard(record, aliasMap, visibilityMap));
 
         return NextResponse.json({ records: formatted });
     } catch (error) {

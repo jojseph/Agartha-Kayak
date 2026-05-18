@@ -1,14 +1,28 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { collectPublicRecordWallets, formatQueueRecordForPublicBoard } from '@/lib/publicRecordFormatting';
 
-export const revalidate = 0; // Disable caching to always get live data
+export const revalidate = 0;
 
 export async function GET() {
     try {
         const { data, error } = await supabaseAdmin
             .from('onchain_queue')
             .select(`
-                *,
+                queue_id,
+                community_id,
+                record_type,
+                reference_id,
+                member_address,
+                summary,
+                estimated_bytes,
+                status,
+                batch_id,
+                tx_hash,
+                block_number,
+                created_at,
+                etched_at,
+                onchain_payload,
                 communities (
                     name
                 )
@@ -21,37 +35,23 @@ export async function GET() {
             return NextResponse.json({ error: 'Failed to fetch public records' }, { status: 500 });
         }
 
-        const formattedRecords = data.map((record: any) => {
-            // Extract amount from summary (e.g., "Treasury Loan ₱5,000 — purpose")
-            const amountMatch = record.summary?.match(/₱([\d,]+(\.\d+)?)/);
-            const amount = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, '')) : 0;
-            
-            // Extract purpose from summary
-            const purposeSplit = record.summary?.split('—');
-            const purpose = purposeSplit && purposeSplit.length > 1 
-                ? purposeSplit.slice(1).join('—').trim() 
-                : record.summary || 'Network Transaction';
+        const records = data || [];
+        const walletAddresses = collectPublicRecordWallets(records as any[]);
+        let aliasMap: Record<string, string> = {};
 
-            // Determine type
-            let type = 'member';
-            if (record.record_type === 'loan_approved' || record.record_type === 'reconciliation_approved') {
-                type = 'treasury';
-            }
+        if (walletAddresses.length > 0) {
+            const { data: members } = await supabaseAdmin
+                .from('members')
+                .select('wallet_address, alias')
+                .in('wallet_address', walletAddresses);
 
-            return {
-                id: record.queue_id,
-                type,
-                coop: record.communities?.name || 'Unknown Cooperative',
-                purpose,
-                amount,
-                timestamp: new Date(record.created_at).toLocaleString('en-PH', { 
-                    month: 'short', day: 'numeric', year: 'numeric', 
-                    hour: '2-digit', minute: '2-digit', timeZoneName: 'short' 
-                }),
-                hash: record.tx_hash || record.member_address || 'Pending Network Sync',
-                status: record.status,
-            };
-        });
+            aliasMap = (members || []).reduce((acc: Record<string, string>, member: any) => {
+                acc[member.wallet_address] = member.alias;
+                return acc;
+            }, {});
+        }
+
+        const formattedRecords = records.map((record: any) => formatQueueRecordForPublicBoard(record, aliasMap));
 
         return NextResponse.json({ records: formattedRecords });
     } catch (error) {
