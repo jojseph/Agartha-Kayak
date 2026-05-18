@@ -59,7 +59,7 @@ Agartha-Kayak/
 │   │   │   │   ├── loans/        # peer, treasury, repayment, requests, check-overdue
 │   │   │   │   ├── members/      # register, approve, pending, search
 │   │   │   │   └── treasury/     # reconciliation propose/sign/pending
-│   │   │   ├── Admin/            # Platform admin dashboard
+│   │   │   ├── admin/            # Platform admin dashboard
 │   │   │   ├── dashboard/        # Role-based dashboards (member/elder/owner)
 │   │   │   ├── pool/             # Treasury pool views
 │   │   │   ├── walletAuthTest/   # Wallet connect + registration flow
@@ -148,7 +148,7 @@ The app runs on **http://localhost:3000**.
 | Wallet auth test | `/walletAuthTest` | Connect Lace, register a new alias, simulate auth |
 | Dashboard | `/dashboard` | Role-based dashboards (member / elder / owner) |
 | Pool | `/pool` | Treasury & on-chain queue views |
-| Admin | `/Admin` | Platform administration (community creation, role management) |
+| Admin | `/admin` | Platform administration (community creation, role management) |
 
 ### Other commands
 ```bash

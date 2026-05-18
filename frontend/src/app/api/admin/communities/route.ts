@@ -8,7 +8,7 @@ export async function POST(request: Request) {
 
     try {
         const body = await request.json();
-        const { name, treasury_wallet_address, treasury_balance } = body;
+        const { name, treasury_wallet_address, treasury_balance, owner_address} = body;
 
         if (!name || !treasury_wallet_address) {
             return NextResponse.json({ error: 'Name and treasury wallet address are required' }, { status: 400 });
@@ -20,7 +20,9 @@ export async function POST(request: Request) {
                 { 
                     name, 
                     treasury_wallet_address, 
-                    treasury_balance: treasury_balance ? Number(treasury_balance) : 0 
+                    treasury_balance: treasury_balance ? Number(treasury_balance) : 0 ,
+                    initial_funds: treasury_balance ? Number(treasury_balance) : 0 ,
+                    owner_address
                 }
             ])
             .select()

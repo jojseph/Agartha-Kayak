@@ -10,7 +10,7 @@ export default function WalletAuthTestPage() {
   const { connected, wallet, connect, disconnect } = useWallet();
   const router = useRouter();
   
-  const [appState, setAppState] = useState<'disconnected' | 'checking' | 'needs_alias' | 'pending_approval' | 'rejected' | 'authenticated'>('disconnected');
+  const [appState, setAppState] = useState<'disconnected' | 'checking' | 'needs_alias' | 'pending_approval' | 'rejected' | 'authenticated' | 'application_pending' | 'application_rejected'>('disconnected');
   
   const [address, setAddress] = useState<string | null>(null);
   const [memberData, setMemberData] = useState<any>(null);
@@ -21,10 +21,15 @@ export default function WalletAuthTestPage() {
   const [formState, setFormState] = useState<'idle' | 'animating' | 'success'>('idle');
   const [communities, setCommunities] = useState<any[]>([]);
 
+  // Onboarding branch: false = join an existing community (dropdown),
+  // true = request the creation of a new community (SuperUser-approved).
+  const [requestNewCommunity, setRequestNewCommunity] = useState(false);
+  const [applicationReason, setApplicationReason] = useState('');
+
   useEffect(() => {
     setSession(`agartha-kayak-${Date.now().toString(36)}`);
     
-    fetch('/api/communities')
+    fetch('/api/communities', { cache: 'no-store' })
       .then(res => res.json())
       .then(data => {
         if (data.communities) setCommunities(data.communities);
@@ -70,10 +75,33 @@ export default function WalletAuthTestPage() {
           setAppState('rejected');
         } else {
           setAppState('authenticated'); 
-          router.push('/pending-approval');
+          router.push('/dashboard');
         }
       } else {
-        setAppState('needs_alias'); 
+        // Not a member — check whether this wallet already has a community
+        // request in flight before showing the onboarding form.
+        try {
+          const appRes = await fetch(
+            `/api/coop-applications?walletAddress=${encodeURIComponent(walletAddr)}`,
+            { cache: 'no-store' }
+          );
+          if (appRes.ok) {
+            const appData = await appRes.json();
+            const application = appData.application;
+            if (application?.status === 'pending') {
+              setAppState('application_pending');
+              return;
+            }
+            if (application?.status === 'rejected') {
+              setApplicationReason(application.rejection_reason || '');
+              setAppState('application_rejected');
+              return;
+            }
+          }
+        } catch (lookupErr) {
+          console.error('Community request lookup failed:', lookupErr);
+        }
+        setAppState('needs_alias');
       }
     } catch (err) {
       setErrorMessage("Failed to check the Bayanihan Ledger.");
@@ -112,10 +140,48 @@ export default function WalletAuthTestPage() {
     }
   };
 
+  const submitCoopApplication = async (
+    alias: string,
+    email: string,
+    proposedName: string,
+    treasuryWalletAddress: string,
+    initialFunds: string
+  ) => {
+    setErrorMessage('');
+    try {
+      // Same auth contract as registration — the applicant is unregistered, so
+      // walletAuthFetch proves wallet ownership via the nonce+signature flow.
+      const res = await walletAuthFetch(wallet, '/api/coop-applications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proposedName,
+          treasuryWalletAddress,
+          initialFunds: initialFunds ? Number(initialFunds) : 0,
+          alias,
+          email,
+        }),
+      });
+
+      if (res.ok) {
+        setFormState('animating');
+        setTimeout(() => {
+          setAppState('application_pending');
+          setFormState('idle');
+        }, 250);
+      } else {
+        const errorData = await res.json();
+        setErrorMessage(errorData.error || 'Failed to submit community request. Please try again.');
+      }
+    } catch (err) {
+      setErrorMessage('Network error during community request.');
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
-    
+
     if (!form.checkValidity()) {
       form.reportValidity();
       return;
@@ -124,10 +190,21 @@ export default function WalletAuthTestPage() {
     const formData = new FormData(form);
     const fullName = formData.get('full-name') as string;
     const emailAddress = formData.get('email-address') as string;
+
+    // Branch BEFORE touching the barangay <select> — it isn't rendered in the
+    // "request new community" mode, so reading it would throw.
+    if (requestNewCommunity) {
+      const proposedName = formData.get('community-name') as string;
+      const treasuryWallet = formData.get('treasury-wallet') as string;
+      const initialFunds = (formData.get('initial-funds') as string) || '0';
+      submitCoopApplication(fullName, emailAddress, proposedName, treasuryWallet, initialFunds);
+      return;
+    }
+
     const communityId = formData.get('barangay') as string;
     const selectEl = form.elements.namedItem('barangay') as HTMLSelectElement;
     const barangayName = selectEl.options[selectEl.selectedIndex].text;
-    
+
     registerMember(fullName, emailAddress, communityId, barangayName);
   };
 
@@ -245,29 +322,84 @@ export default function WalletAuthTestPage() {
                   />
                 </div>
 
-                {/* Barangay */}
-                <div>
-                  <label className="block text-[13px] font-semibold text-gray-800 mb-[5px]" htmlFor="barangay">Barangay / Cooperative Name</label>
-                  <select 
-                    className="w-full h-11 lg:h-[42px] pl-3.5 pr-10 bg-white border border-gray-200 rounded-xl text-[14px] lg:text-[14px] text-[#0A0A0A] focus:outline-none focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/10 transition-all appearance-none" 
-                    id="barangay" 
-                    name="barangay" 
-                    defaultValue="" 
-                    required
-                    style={{
-                      backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>")`,
-                      backgroundRepeat: 'no-repeat',
-                      backgroundPosition: 'right 14px center',
-                    }}
-                  >
-                    <option value="" disabled>Select your barangay…</option>
-                    {communities.map((c) => (
-                      <option key={c.community_id} value={c.community_id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                {/* Onboarding branch toggle */}
+                <div className="flex items-start gap-2.5 py-0.5">
+                  <input
+                    id="request-new-community"
+                    type="checkbox"
+                    checked={requestNewCommunity}
+                    onChange={(e) => setRequestNewCommunity(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-600/20 cursor-pointer"
+                  />
+                  <label htmlFor="request-new-community" className="text-[12.5px] text-gray-700 leading-snug cursor-pointer select-none">
+                    My community isn&apos;t listed — <span className="font-semibold">request a new community</span>. An administrator reviews it; once approved your wallet becomes its owner.
+                  </label>
                 </div>
+
+                {!requestNewCommunity ? (
+                  /* Join an existing community */
+                  <div>
+                    <label className="block text-[13px] font-semibold text-gray-800 mb-[5px]" htmlFor="barangay">Barangay / Cooperative Name</label>
+                    <select
+                      className="w-full h-11 lg:h-[42px] pl-3.5 pr-10 bg-white border border-gray-200 rounded-xl text-[14px] lg:text-[14px] text-[#0A0A0A] focus:outline-none focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/10 transition-all appearance-none"
+                      id="barangay"
+                      name="barangay"
+                      defaultValue=""
+                      required
+                      style={{
+                        backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>")`,
+                        backgroundRepeat: 'no-repeat',
+                        backgroundPosition: 'right 14px center',
+                      }}
+                    >
+                      <option value="" disabled>Select your barangay…</option>
+                      {communities.map((c) => (
+                        <option key={c.community_id} value={c.community_id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  /* Request a new community */
+                  <>
+                    <div>
+                      <label className="block text-[13px] font-semibold text-gray-800 mb-[5px]" htmlFor="community-name">Community Name</label>
+                      <input
+                        className="w-full h-11 lg:h-[42px] px-3.5 bg-white border border-gray-200 rounded-xl text-[14px] lg:text-[14px] text-[#0A0A0A] placeholder-gray-400 focus:outline-none focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/10 transition-all"
+                        id="community-name"
+                        name="community-name"
+                        type="text"
+                        placeholder="e.g. San Roque Cooperative"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[13px] font-semibold text-gray-800 mb-[5px]" htmlFor="treasury-wallet">Treasury Wallet Address (Multi-sig)</label>
+                      <input
+                        className="w-full h-11 lg:h-[42px] px-3.5 bg-white border border-gray-200 rounded-xl text-[14px] lg:text-[14px] text-[#0A0A0A] placeholder-gray-400 font-mono focus:outline-none focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/10 transition-all"
+                        id="treasury-wallet"
+                        name="treasury-wallet"
+                        type="text"
+                        placeholder="addr_test1q…"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[13px] font-semibold text-gray-800 mb-[5px]" htmlFor="initial-funds">Initial Treasury Balance (PHP)</label>
+                      <input
+                        className="w-full h-11 lg:h-[42px] px-3.5 bg-white border border-gray-200 rounded-xl text-[14px] lg:text-[14px] text-[#0A0A0A] placeholder-gray-400 focus:outline-none focus:border-blue-600 focus:ring-[3px] focus:ring-blue-600/10 transition-all"
+                        id="initial-funds"
+                        name="initial-funds"
+                        type="number"
+                        min="0"
+                        placeholder="100000"
+                        required
+                      />
+                    </div>
+                    <p className="text-[11px] text-gray-400 -mt-1">Your connected wallet will be set as the community owner once an administrator approves this request.</p>
+                  </>
+                )}
 
                 {/* Government ID Number */}
                 <div>
@@ -380,6 +512,67 @@ export default function WalletAuthTestPage() {
           <p className="text-[14.5px] text-gray-500 leading-[1.6] mb-6">
             Unfortunately, your request to join the cooperative was declined by the community elders. Please contact an elder directly if you believe this was a mistake.
           </p>
+          <button onClick={handleBack} className="inline-flex items-center justify-center w-full h-12 bg-[#F4F4F2] text-[#0A0A0A] rounded-full text-[14.5px] font-semibold hover:bg-[#E5E5E2] transition-colors">
+            Return Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // RENDER: Community Request Pending
+  // ==========================================
+  if (appState === 'application_pending') {
+    return (
+      <div className="min-h-screen w-full bg-[#FAFAFA] text-[#0A0A0A] flex items-center justify-center p-4">
+        <div className="w-full max-w-[440px] bg-white rounded-[24px] px-9 pt-10 pb-8 relative shadow-[0_1px_2px_rgba(16,24,40,0.04),0_24px_48px_-16px_rgba(16,24,40,0.10)] text-center">
+          <button onClick={handleBack} className="absolute top-[18px] right-[18px] w-8 h-8 rounded-full bg-[#F3F3F1] text-[#6B7280] flex items-center justify-center transition-colors hover:bg-[#E5E5E2] hover:text-[#0A0A0A]">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+          <div className="w-16 h-16 rounded-full bg-yellow-100 flex items-center justify-center mx-auto mb-6">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7 text-yellow-600"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <h2 className="text-[22px] font-bold tracking-tight mb-2.5">Community Request Under Review</h2>
+          <p className="text-[14.5px] text-gray-500 leading-[1.6] mb-6">
+            Your request to create a new community has been submitted and is awaiting platform administrator approval. Once approved, your wallet becomes the community owner and you can sign in.
+          </p>
+          <button onClick={handleBack} className="inline-flex items-center justify-center w-full h-12 bg-[#F4F4F2] text-[#0A0A0A] rounded-full text-[14.5px] font-semibold hover:bg-[#E5E5E2] transition-colors">
+            Return Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // RENDER: Community Request Rejected
+  // ==========================================
+  if (appState === 'application_rejected') {
+    return (
+      <div className="min-h-screen w-full bg-[#FAFAFA] text-[#0A0A0A] flex items-center justify-center p-4">
+        <div className="w-full max-w-[440px] bg-white rounded-[24px] px-9 pt-10 pb-8 relative shadow-[0_1px_2px_rgba(16,24,40,0.04),0_24px_48px_-16px_rgba(16,24,40,0.10)] text-center">
+          <button onClick={handleBack} className="absolute top-[18px] right-[18px] w-8 h-8 rounded-full bg-[#F3F3F1] text-[#6B7280] flex items-center justify-center transition-colors hover:bg-[#E5E5E2] hover:text-[#0A0A0A]">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+          <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-6">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7 text-red-600"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          </div>
+          <h2 className="text-[22px] font-bold tracking-tight mb-2.5">Community Request Rejected</h2>
+          <p className="text-[14.5px] text-gray-500 leading-[1.6] mb-3">
+            Your request to create a new community was declined by a platform administrator.
+          </p>
+          {applicationReason && (
+            <p className="text-[13px] text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2 mb-6">
+              Reason: {applicationReason}
+            </p>
+          )}
+          <button
+            onClick={() => { setApplicationReason(''); setRequestNewCommunity(false); setAppState('needs_alias'); }}
+            className="inline-flex items-center justify-center w-full h-12 bg-[#0A0A0A] text-white rounded-full text-[14.5px] font-semibold hover:bg-gray-800 transition-colors mb-3"
+          >
+            Apply Again
+          </button>
           <button onClick={handleBack} className="inline-flex items-center justify-center w-full h-12 bg-[#F4F4F2] text-[#0A0A0A] rounded-full text-[14.5px] font-semibold hover:bg-[#E5E5E2] transition-colors">
             Return Home
           </button>

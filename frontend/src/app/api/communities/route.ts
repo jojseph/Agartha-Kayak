@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
+// force-dynamic alone does not stop Next from serving the underlying supabase-js
+// GET from its data cache — a freshly admin-approved community must appear on the
+// very next onboarding load, so opt the fetch cache out entirely too.
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 export async function GET() {
     try {

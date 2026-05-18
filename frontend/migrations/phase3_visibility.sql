@@ -27,4 +27,8 @@ CREATE TABLE IF NOT EXISTS public.coop_applications (
   created_at timestamptz DEFAULT now()
 );
 
+ALTER TABLE public.coop_applications
+  ADD COLUMN IF NOT EXISTS applicant_alias text,
+  ADD COLUMN IF NOT EXISTS applicant_email text;
+  
 COMMIT;

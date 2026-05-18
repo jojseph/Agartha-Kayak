@@ -17,6 +17,7 @@ export default function AdminPage() {
     // Create Community State
     const [newCommName, setNewCommName] = useState('');
     const [newCommWallet, setNewCommWallet] = useState('');
+    const [newCommOwner, setNewCommOwner] = useState('');
     const [newCommBalance, setNewCommBalance] = useState('');
     const [commLoading, setCommLoading] = useState(false);
     
@@ -29,6 +30,10 @@ export default function AdminPage() {
     const [selectedComm, setSelectedComm] = useState('');
     const [adjustBalance, setAdjustBalance] = useState('');
     const [treasuryLoading, setTreasuryLoading] = useState(false);
+
+    // Community Requests (coop applications)
+    const [applications, setApplications] = useState<any[]>([]);
+    const [decisionLoading, setDecisionLoading] = useState<string | null>(null);
 
     // SuperUser gate (Module 1 CP4 placeholder).
     // TODO(M2): replace this client-side wallet probe with Ben's AuthProvider
@@ -68,6 +73,7 @@ export default function AdminPage() {
         if (accessStatus !== 'allowed') return;
         fetchCommunities();
         fetchMembers();
+        fetchApplications();
     }, [accessStatus]);
 
     const fetchCommunities = async () => {
@@ -94,6 +100,49 @@ export default function AdminPage() {
         }
     };
 
+    const fetchApplications = async () => {
+        try {
+            // GET is SuperUser-gated server-side, so it must carry the signed
+            // WalletSig header — use walletAuthFetch, not a plain fetch.
+            const res = await walletAuthFetch(wallet, '/api/admin/coop-applications', { method: 'GET' });
+            if (res.ok) {
+                const data = await res.json();
+                setApplications(data.applications || []);
+            }
+        } catch (error) {
+            console.error('Failed to fetch community requests', error);
+        }
+    };
+
+    const handleDecision = async (applicationId: string, action: 'approved' | 'rejected') => {
+        let rejectionReason: string | undefined;
+        if (action === 'rejected') {
+            rejectionReason = window.prompt('Reason for rejecting this community request? (optional)') ?? '';
+        }
+        setDecisionLoading(applicationId);
+        try {
+            const res = await walletAuthFetch(wallet, '/api/admin/coop-applications', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ application_id: applicationId, action, rejection_reason: rejectionReason })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert(action === 'approved'
+                    ? 'Community request approved — community created and owner added.'
+                    : 'Community request rejected.');
+                fetchApplications();
+                fetchCommunities();
+            } else {
+                alert(`Error: ${data.error}`);
+            }
+        } catch (error) {
+            alert('Failed to process the request');
+        } finally {
+            setDecisionLoading(null);
+        }
+    };
+
     const handleCreateCommunity = async (e: React.FormEvent) => {
         e.preventDefault();
         setCommLoading(true);
@@ -104,6 +153,7 @@ export default function AdminPage() {
                 body: JSON.stringify({
                     name: newCommName,
                     treasury_wallet_address: newCommWallet,
+                    owner_address: newCommOwner,
                     treasury_balance: newCommBalance ? Number(newCommBalance) : 0
                 })
             });
@@ -111,6 +161,7 @@ export default function AdminPage() {
                 alert('Community created successfully!');
                 setNewCommName('');
                 setNewCommWallet('');
+                setNewCommOwner('');
                 setNewCommBalance('');
                 fetchCommunities();
             } else {
@@ -303,6 +354,17 @@ export default function AdminPage() {
                                     />
                                 </div>
                                 <div>
+                                    <label className="block text-sm font-semibold mb-2">Owner Wallet Address</label>
+                                    <input 
+                                        type="text" 
+                                        required
+                                        value={newCommOwner}
+                                        onChange={e => setNewCommOwner(e.target.value)}
+                                        placeholder="addr1q..."
+                                        className="w-full bg-white border border-black/10 rounded-xl px-4 py-3.5 text-[15px] font-mono outline-none transition-all focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 placeholder:text-black/30 placeholder:font-sans shadow-sm"
+                                    />
+                                </div>
+                                <div>
                                     <label className="block text-sm font-semibold mb-2">Initial Treasury Balance (PHP)</label>
                                     <input 
                                         type="number" 
@@ -446,6 +508,58 @@ export default function AdminPage() {
                                     {treasuryLoading ? 'Updating...' : 'Update Balance'}
                                 </button>
                             </form>
+                        </div>
+
+                        {/* Section 4: Community Requests */}
+                        <div className="bg-white/90 backdrop-blur-md border border-white/20 rounded-3xl p-7 md:p-9 shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all">
+                            <div className="flex items-center gap-4 mb-8">
+                                <div className="w-12 h-12 rounded-2xl bg-orange-100 flex items-center justify-center text-orange-700 shadow-inner">
+                                    <ShieldCheck size={24} />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold">Community Requests</h2>
+                                    <p className="text-sm text-black/60">Review wallet-submitted requests to create a new community</p>
+                                </div>
+                            </div>
+
+                            {applications.length === 0 ? (
+                                <p className="text-sm text-black/50 py-4">No pending community requests.</p>
+                            ) : (
+                                <div className="space-y-4">
+                                    {applications.map(app => (
+                                        <div key={app.application_id} className="border border-black/10 rounded-2xl p-5 bg-white shadow-sm">
+                                            <div className="flex items-start justify-between gap-4 mb-3">
+                                                <div>
+                                                    <h3 className="text-[16px] font-bold">{app.proposed_name}</h3>
+                                                    <p className="text-xs text-black/50 mt-0.5">by {app.applicant_alias || 'Unknown'} · {app.applicant_email || '—'}</p>
+                                                </div>
+                                                <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1">Pending</span>
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-[13px] text-black/70 mb-4">
+                                                <div><span className="text-black/40">Applicant wallet</span><br/><span className="font-mono break-all">{app.applicant_address}</span></div>
+                                                <div><span className="text-black/40">Treasury wallet</span><br/><span className="font-mono break-all">{app.treasury_wallet_address}</span></div>
+                                                <div><span className="text-black/40">Initial funds:</span> ₱{Number(app.initial_funds || 0).toLocaleString()}</div>
+                                            </div>
+                                            <div className="flex gap-3">
+                                                <button
+                                                    onClick={() => handleDecision(app.application_id, 'approved')}
+                                                    disabled={decisionLoading === app.application_id}
+                                                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[14px] py-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    {decisionLoading === app.application_id ? 'Processing…' : 'Accept'}
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDecision(app.application_id, 'rejected')}
+                                                    disabled={decisionLoading === app.application_id}
+                                                    className="flex-1 bg-white border border-red-200 text-red-600 hover:bg-red-50 font-semibold text-[14px] py-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    Reject
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                     </div>
