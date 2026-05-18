@@ -57,7 +57,7 @@ export default function Header() {
       <Link href="/" className="flex-shrink-0">
         <Image
           src="/logo.png"
-          alt="Agartha Reef Logo"
+          alt="Agartha Kayak Logo"
           width={145}
           height={73}
           className="object-contain w-[145px] h-[73px]"
