@@ -281,6 +281,9 @@ export default function DashboardTestPage() {
   const [address, setAddress] = useState<string | null>(null);
   const [memberData, setMemberData] = useState<any>(null);
   const [neighbors, setNeighbors] = useState<Neighbor[]>([]);
+  const [ownerMembers, setOwnerMembers] = useState<{ wallet_address: string; alias: string; role: string }[]>([]);
+  const [ownerTarget, setOwnerTarget] = useState('');
+  const [ownerRoleBusy, setOwnerRoleBusy] = useState(false);
   const [rowVisibility, setRowVisibility] = useState<Record<string, boolean>>({
     'tx1q8w': true,
     'tx1m5k': false,
@@ -395,6 +398,58 @@ export default function DashboardTestPage() {
       }).catch(console.error);
     }
   }, [connected, wallet]);
+
+  // Owner-only: load this community's members (with role) for the role console.
+  const loadOwnerMembers = async () => {
+    if (!wallet || memberData?.role !== 'owner') return;
+    try {
+      const res = await walletAuthFetch(wallet, '/api/owner/role', { method: 'GET' });
+      if (res.ok) {
+        const data = await res.json();
+        setOwnerMembers(data.members || []);
+      }
+    } catch (err) {
+      console.error('Failed to load community members', err);
+    }
+  };
+
+  useEffect(() => {
+    if (connected && wallet && memberData?.role === 'owner') {
+      loadOwnerMembers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, wallet, memberData?.role]);
+
+  const handleOwnerRoleChange = async () => {
+    const target = ownerMembers.find(m => m.wallet_address === ownerTarget);
+    if (!target) return alert('Please select a member.');
+    const nextRole = target.role === 'elder' ? 'member' : 'elder';
+    setOwnerRoleBusy(true);
+    try {
+      const res = await walletAuthFetch(wallet, '/api/owner/role', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetAddress: target.wallet_address, role: nextRole }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(
+          nextRole === 'elder'
+            ? `${target.alias} is now an Elder.`
+            : `${target.alias} is now a Member.`
+        );
+        setOwnerTarget('');
+        loadOwnerMembers();
+      } else {
+        alert(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to change role');
+    } finally {
+      setOwnerRoleBusy(false);
+    }
+  };
 
   // Modals States
   const [treasuryModal, setTreasuryModal] = useState({ isOpen: false, step: 1 as number | 'success' });
@@ -822,81 +877,49 @@ export default function DashboardTestPage() {
             </>
           )}
 
-          {/* --- TASK 2.5: OWNER-ONLY ADMINISTRATIVE UTILITIES --- */}
+          {/* --- OWNER-ONLY: ROLE MANAGEMENT (promote member ⇄ demote elder) --- */}
           {memberData?.role === 'owner' && (
             <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mb-4 transition-all hover:border-gray-300">
               <div className="flex items-center gap-2 mb-4 text-[#0A0A0A]">
                 <Shield size={18} className="text-red-600" />
                 <h3 className="text-base font-bold tracking-tight">Owner Management Console</h3>
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Adjust Share Capital Configuration */}
-                <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/50">
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    Cooperative Share Capital Goal
-                  </label>
-                  <div className="flex gap-2">
-                    <input 
-                      type="number" 
-                      placeholder="e.g. 50000" 
-                      className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-gray-900"
-                      id="owner-share-capital"
-                    />
-                    <button 
-                      onClick={async () => {
-                        const input = document.getElementById('owner-share-capital') as HTMLInputElement;
-                        if (!input?.value) return alert('Please specify a capital allocation threshold.');
-                        try {
-                          const res = await walletAuthFetch(wallet, '/api/owner/settings', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ shareCapital: Number(input.value), address })
-                          });
-                          if (res.ok) alert('Cooperative governance parameters updated successfully on-chain!');
-                        } catch (err) { console.error(err); }
-                      }}
-                      className="bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors"
-                    >
-                      Update Threshold
-                    </button>
-                  </div>
-                </div>
 
-                {/* Authority Promotion Panel */}
-                <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/50">
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    Elevate Member to Elder Status
-                  </label>
-                  <div className="flex gap-2">
-                    <select 
-                      className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-gray-900 appearance-none"
-                      id="owner-promote-target"
-                    >
-                      <option value="">Select an active member...</option>
-                      {neighbors.map(n => (
-                        <option key={n.wallet_address} value={n.wallet_address}>{n.alias}</option>
-                      ))}
-                    </select>
-                    <button 
-                      onClick={async () => {
-                        const select = document.getElementById('owner-promote-target') as HTMLSelectElement;
-                        if (!select?.value) return alert('Please select a valid member candidate.');
-                        try {
-                          const res = await walletAuthFetch(wallet, '/api/owner/promote', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ targetAddress: select.value, ownerAddress: address })
-                          });
-                          if (res.ok) alert('Member successfully elevated to Elder council.');
-                        } catch (err) { console.error(err); }
-                      }}
-                      className="bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors"
-                    >
-                      Grant Authority
-                    </button>
-                  </div>
+              <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/50">
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  Change Member Role
+                </label>
+                <p className="text-xs text-gray-500 mb-3">
+                  Promote a member to Elder, or demote an Elder back to Member. Limited to your community.
+                </p>
+                <div className="flex gap-2">
+                  <select
+                    className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-gray-900 appearance-none"
+                    value={ownerTarget}
+                    onChange={e => setOwnerTarget(e.target.value)}
+                  >
+                    <option value="">Select a member...</option>
+                    {ownerMembers.map(m => (
+                      <option key={m.wallet_address} value={m.wallet_address}>
+                        {m.alias} — {m.role === 'elder' ? 'Elder' : 'Member'}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleOwnerRoleChange}
+                    disabled={ownerRoleBusy || !ownerTarget}
+                    className="bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    {ownerRoleBusy
+                      ? 'Working…'
+                      : ownerMembers.find(m => m.wallet_address === ownerTarget)?.role === 'elder'
+                        ? 'Demote to Member'
+                        : 'Promote to Elder'}
+                  </button>
                 </div>
+                {ownerMembers.length === 0 && (
+                  <p className="text-xs text-gray-400 mt-3">No members or elders in your community yet.</p>
+                )}
               </div>
             </div>
           )}
