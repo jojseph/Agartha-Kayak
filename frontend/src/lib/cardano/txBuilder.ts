@@ -58,6 +58,50 @@ function getBlockfrostClient(): BlockFrostAPI {
   return _client;
 }
 
+// Cardano transaction metadata rejects any text string longer than 64 BYTES
+// (UTF-8). The standard convention is to split a long string into a list of
+// <=64-byte chunks. Walk the metadata recursively and apply that, splitting
+// on code-point boundaries so multibyte characters are never cut in half.
+const MAX_METADATA_STRING_BYTES = 64;
+
+function byteSafeChunks(str: string): string[] {
+  const chunks: string[] = [];
+  let current = '';
+  for (const cp of Array.from(str)) {
+    if (Buffer.byteLength(current + cp, 'utf8') > MAX_METADATA_STRING_BYTES) {
+      if (current) chunks.push(current);
+      current = cp;
+    } else {
+      current += cp;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+function chunkMetadataStrings(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return Buffer.byteLength(value, 'utf8') > MAX_METADATA_STRING_BYTES
+      ? byteSafeChunks(value)
+      : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(chunkMetadataStrings);
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const key =
+        Buffer.byteLength(k, 'utf8') > MAX_METADATA_STRING_BYTES
+          ? k.slice(0, MAX_METADATA_STRING_BYTES)
+          : k;
+      out[key] = chunkMetadataStrings(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 export async function buildTxWithMetadata(
   metadata: object,
   label = 674
@@ -74,7 +118,7 @@ export async function buildTxWithMetadata(
 
   builder.setNetwork(network);
   builder.changeAddress(submitterAddress);
-  builder.metadataValue(label, metadata);
+  builder.metadataValue(label, chunkMetadataStrings(metadata) as object);
   builder.signingKey(submitterSkey);
 
   const txHex = await builder.complete();
