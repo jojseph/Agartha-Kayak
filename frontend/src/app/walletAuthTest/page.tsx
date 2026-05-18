@@ -3,12 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import ConnectionSuccess from '@/components/ConnectionSuccess';
 import { useWallet } from '@meshsdk/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { resolveWalletAddress, walletAuthFetch } from '@/lib/walletAuthClient';
 
 export default function WalletAuthTestPage() {
   const { connected, wallet, connect, disconnect } = useWallet();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectUrl = searchParams.get('redirect') || '/dashboard';
   
   const [appState, setAppState] = useState<'disconnected' | 'checking' | 'needs_alias' | 'pending_approval' | 'rejected' | 'authenticated' | 'application_pending' | 'application_rejected'>('disconnected');
   
@@ -75,7 +77,7 @@ export default function WalletAuthTestPage() {
           setAppState('rejected');
         } else {
           setAppState('authenticated'); 
-          router.push('/dashboard');
+          router.push(redirectUrl);
         }
       } else {
         // Not a member — check whether this wallet already has a community
