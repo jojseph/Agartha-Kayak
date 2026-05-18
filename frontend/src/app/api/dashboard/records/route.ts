@@ -19,10 +19,11 @@ export async function GET(request: Request) {
         const address = searchParams.get('address');
 
         let communityId: string | null = null;
+        let memberRole: string | null = null;
         if (address) {
             const { data: member, error: memberError } = await supabaseAdmin
                 .from('members')
-                .select('community_id')
+                .select('community_id, role')
                 .eq('wallet_address', address)
                 .maybeSingle();
 
@@ -32,7 +33,11 @@ export async function GET(request: Request) {
             }
 
             communityId = member?.community_id ?? null;
+            memberRole = member?.role ?? null;
         }
+
+        // Elders and owners can see all records; regular members only see public ones.
+        const canSeePrivate = memberRole === 'elder' || memberRole === 'owner';
 
         let query = supabaseAdmin
             .from('onchain_queue')
@@ -107,7 +112,12 @@ export async function GET(request: Request) {
 
         const formatted = records.map((record: any) => formatQueueRecordForPublicBoard(record, aliasMap, visibilityMap));
 
-        return NextResponse.json({ records: formatted });
+        // Strip private records for regular members — elders/owners see everything.
+        const visible = canSeePrivate
+            ? formatted
+            : formatted.filter((record: any) => record.isPublic !== false);
+
+        return NextResponse.json({ records: visible });
     } catch (error) {
         console.error('Error in dashboard records API:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

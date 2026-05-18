@@ -77,6 +77,16 @@ const RECORD_TABS: { id: RecordTab; label: string }[] = [
   { id: 'gas', label: 'Gas' },
 ];
 
+type ActivityTab = 'all' | 'peer_loans' | 'treasury_loans' | 'votes' | 'repayments';
+
+const ACTIVITY_TABS: { id: ActivityTab; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'peer_loans', label: 'P2P Loans' },
+  { id: 'treasury_loans', label: 'Treasury Loans' },
+  { id: 'votes', label: 'Votes' },
+  { id: 'repayments', label: 'Repayments' },
+];
+
 interface Neighbor {
   wallet_address: string;
   alias: string;
@@ -311,6 +321,108 @@ export default function DashboardTestPage() {
   const [dashboardRecords, setDashboardRecords] = useState<any[]>([]);
   const [recordsLoading, setRecordsLoading] = useState(true);
   const [recordTab, setRecordTab] = useState<RecordTab>('all');
+  const [activities, setActivities] = useState<any[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(true);
+  const [activityTab, setActivityTab] = useState<ActivityTab>('all');
+  const [loanStatusBusy, setLoanStatusBusy] = useState<Record<string, boolean>>({});
+
+  const refreshActivities = (addr: string) => {
+    setActivitiesLoading(true);
+    fetch(`/api/activity?address=${addr}`)
+      .then(r => r.json())
+      .then(d => { if (d.activities) setActivities(d.activities); })
+      .catch(console.error)
+      .finally(() => setActivitiesLoading(false));
+  };
+
+  useEffect(() => {
+    if (address) refreshActivities(address);
+  }, [address]);
+
+  const filteredActivities = useMemo(() => {
+    if (activityTab === 'all') return activities;
+    if (activityTab === 'peer_loans') return activities.filter(a => a.type === 'peer_loan' || a.type === 'peer_loan_lender');
+    if (activityTab === 'treasury_loans') return activities.filter(a => a.type === 'treasury_loan');
+    if (activityTab === 'votes') return activities.filter(a => a.type === 'treasury_loan_vote');
+    if (activityTab === 'repayments') return activities.filter(a => a.type === 'repayment_submitted' || a.type === 'repayment_confirmed');
+    return activities;
+  }, [activities, activityTab]);
+
+  const handlePeerLoanStatusChange = async (loanId: string, newStatus: 'valid' | 'invalid') => {
+    if (!address || !wallet) return;
+    setLoanStatusBusy(prev => ({ ...prev, [loanId]: true }));
+    try {
+      const res = await walletAuthFetch(wallet, '/api/loans/peer/status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ loanId, newStatus, lenderAddress: address }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        refreshActivities(address);
+      } else {
+        alert(data.error || 'Failed to update loan status.');
+      }
+    } catch (err) {
+      console.error('Failed to update peer loan status:', err);
+      alert('Something went wrong. Please try again.');
+    } finally {
+      setLoanStatusBusy(prev => ({ ...prev, [loanId]: false }));
+    }
+  };
+
+  // Treasury loan: elder confirms an off-chain repayment
+  const confirmTreasuryRepayment = async (loanId: string, amount: number) => {
+    if (!address || !wallet) return;
+    setLoanStatusBusy(prev => ({ ...prev, [loanId]: true }));
+    try {
+      const res = await walletAuthFetch(wallet, '/api/loans/treasury/repayment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ loanId, amount, method: 'cash', elderAddress: address }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (data.isFullyPaid) {
+          alert(`✓ Repayment confirmed. Loan is now fully paid!`);
+        } else {
+          alert(`✓ Repayment of ₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })} confirmed. Remaining balance: ₱${data.remainingBalance?.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`);
+        }
+        refreshActivities(address);
+      } else {
+        alert(data.error || 'Failed to confirm repayment.');
+      }
+    } catch (err) {
+      console.error('Failed to confirm treasury repayment:', err);
+      alert('Something went wrong. Please try again.');
+    } finally {
+      setLoanStatusBusy(prev => ({ ...prev, [loanId]: false }));
+    }
+  };
+
+  // Treasury loan: elder manages status (overdue / defaulted / reinstate)
+  const manageTreasuryLoanStatus = async (loanId: string, newStatus: 'overdue' | 'defaulted' | 'approved', reason?: string) => {
+    if (!address || !wallet) return;
+    setLoanStatusBusy(prev => ({ ...prev, [loanId]: true }));
+    try {
+      const res = await walletAuthFetch(wallet, '/api/loans/treasury/manage', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ loanId, newStatus, elderAddress: address, reason }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        refreshActivities(address);
+      } else {
+        alert(data.error || 'Failed to update loan status.');
+      }
+    } catch (err) {
+      console.error('Failed to manage treasury loan status:', err);
+      alert('Something went wrong. Please try again.');
+    } finally {
+      setLoanStatusBusy(prev => ({ ...prev, [loanId]: false }));
+    }
+  };
 
   const filteredDashboardRecords = useMemo(() => {
     if (recordTab === 'all') return dashboardRecords;
@@ -509,6 +621,31 @@ export default function DashboardTestPage() {
     queuedCount: 0, totalBytes: 0, maxBytes: 16384, percentFull: 0, batchCount: 1, willOverflow: false,
   });
   const [queueLoading, setQueueLoading] = useState(true);
+
+  // Group queue items by status and record_type
+  const groupedQueue = useMemo(() => {
+    if (!queueItems.length) return [];
+    const groups = new Map<string, { status: string, type: string, count: number, bytes: number, label: string }>();
+
+    queueItems.forEach(item => {
+      const key = `${item.status}-${item.record_type}`;
+      if (!groups.has(key)) {
+        const typeLabel = item.record_type.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        groups.set(key, {
+          status: item.status,
+          type: item.record_type,
+          count: 0,
+          bytes: 0,
+          label: typeLabel
+        });
+      }
+      const g = groups.get(key)!;
+      g.count += 1;
+      g.bytes += (item.estimated_bytes || 0);
+    });
+
+    return Array.from(groups.values());
+  }, [queueItems]);
 
   // Countdown timer for next batch, synced from the local worker status file.
   const [nextBatchIn, setNextBatchIn] = useState(0);
@@ -1080,30 +1217,28 @@ export default function DashboardTestPage() {
                   <span className="nq-spinner" style={{ width: 16, height: 16 }} />
                   <span style={{ marginLeft: 8, color: 'var(--text-3)', fontSize: 13 }}>Loading queue…</span>
                 </div>
-              ) : queueItems.length === 0 ? (
+              ) : groupedQueue.length === 0 ? (
                 <div className="nq-empty">
                   <Check size={16} style={{ color: 'var(--status-green)' }} />
                   <span style={{ marginLeft: 8, color: 'var(--text-2)', fontSize: 13 }}>All receipts have been etched — queue is clear</span>
                 </div>
               ) : (
-                queueItems.slice(0, 8).map((item) => (
-                  <div key={item.queue_id} className={`nq-item nq-item--${item.status === 'batched' ? 'batched' : item.status === 'etched' ? 'done' : 'queued'}`}>
+                groupedQueue.map((group, idx) => (
+                  <div key={idx} className={`nq-item nq-item--${group.status === 'batched' ? 'batched' : group.status === 'etched' ? 'done' : 'queued'}`}>
                     <div className="nq-item__dot" />
                     <div className="nq-item__body">
-                      <span className="nq-item__label">{item.summary}</span>
+                      <span className="nq-item__label">{group.count} {group.label}{group.count !== 1 ? 's' : ''}</span>
                       <span className="nq-item__meta">
-                        {item.member_alias} · {item.estimated_bytes} bytes
-                        {item.block_number ? ` · Block #${item.block_number}` : ''}
-                        {item.status === 'queued' ? ' · Awaiting batch' : ''}
+                        {group.bytes} bytes total\n                        {group.status === 'queued' ? ' · Awaiting batch' : ''}
                       </span>
                     </div>
-                    {item.status === 'queued' && <span className="nq-item__status">Queued</span>}
-                    {item.status === 'batched' && (
+                    {group.status === 'queued' && <span className="nq-item__status">Queued</span>}
+                    {group.status === 'batched' && (
                       <span className="nq-item__status nq-item__status--active">
                         <span className="nq-spinner" /> Etching
                       </span>
                     )}
-                    {item.status === 'etched' && (
+                    {group.status === 'etched' && (
                       <span className="nq-item__status nq-item__status--done">
                         <Check size={12} /> Etched
                       </span>
@@ -1137,6 +1272,218 @@ export default function DashboardTestPage() {
             </button>
 
 
+          </div>
+
+          <div className="records" style={{ marginBottom: '24px' }}>
+            <div className="records__head">
+              <div>
+                <h2 className="records__title">My Activity</h2>
+                <div className="records__sub">Your loan requests and governance actions</div>
+              </div>
+              <div className="records__filters" role="tablist" aria-label="Activity filters">
+                {ACTIVITY_TABS.map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={activityTab === tab.id}
+                    className={activityTab === tab.id ? 'is-active' : ''}
+                    onClick={() => setActivityTab(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <table className="records-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Action</th>
+                  <th>Details</th>
+                  <th style={{ textAlign: 'right' }}>Amount</th>
+                  <th style={{ textAlign: 'center' }}>Status</th>
+                  <th style={{ textAlign: 'center', width: '160px' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activitiesLoading ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '3rem 0' }}>
+                      <Activity className="animate-spin" style={{ color: 'var(--text-3)', margin: '0 auto' }} size={24} />
+                    </td>
+                  </tr>
+                ) : filteredActivities.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-3)' }}>
+                      {activityTab === 'all' ? 'No activity yet.' : `No ${ACTIVITY_TABS.find(t => t.id === activityTab)?.label.toLowerCase()} activity yet.`}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredActivities.map(act => {
+                    // P2P: Lender can mark valid/invalid on active loans
+                    const isActionablePeerLoan =
+                      act.isLender &&
+                      act.loanType === 'peer' &&
+                      ['approved', 'active', 'invalid'].includes(act.status);
+
+                    // Treasury: Elder/Owner can manage OTHER members' active loans
+                    const isElderManageable =
+                      act.type === 'treasury_loan_manage' &&
+                      act.isElderManaged &&
+                      ['approved', 'active', 'overdue'].includes(act.status);
+
+                    const isBusy = loanStatusBusy[act.loanId];
+
+                    // Amount cell: show remaining balance for treasury loans
+                    const amountCell = act.loanType === 'treasury' && act.remainingBalance !== undefined ? (
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontWeight: 600, fontSize: '13px' }}>
+                          ₱ {Number(act.amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                        </div>
+                        {act.status !== 'pending' && act.status !== 'rejected' && (
+                          <div style={{ fontSize: '11px', color: act.remainingBalance === 0 ? '#10b981' : 'var(--text-3)' }}>
+                            {act.remainingBalance === 0 ? '✓ Fully paid' : `₱ ${Number(act.remainingBalance).toLocaleString('en-PH', { minimumFractionDigits: 2 })} left`}
+                          </div>
+                        )}
+                      </div>
+                    ) : act.mode === 'things' ? (
+                      <span style={{ color: 'var(--text-3)', fontSize: '12px' }}>Item loan</span>
+                    ) : act.amount ? (
+                      `₱ ${Number(act.amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
+                    ) : '—';
+
+                    return (
+                      <tr key={act.id}>
+                        <td className="cell-date">
+                          {new Date(act.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </td>
+                        <td>
+                          <span style={{ fontWeight: 600, color: 'var(--text)' }}>{act.title}</span>
+                          {act.collateral && (
+                            <div style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '2px' }}>
+                              Collateral: {act.collateral}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ color: 'var(--text-2)', fontSize: '13px', maxWidth: '240px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {act.mode === 'things' && act.itemName ? `Item: ${act.itemName}` : act.description}
+                        </td>
+                        <td className="cell-amount">
+                          {amountCell}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-md transition-all ${
+                            act.statusBadge === 'Pending review' ? 'bg-amber-50 border border-amber-200 text-amber-700' :
+                            act.statusBadge === 'Approved' || act.statusBadge === 'Active' || act.statusBadge === 'Fully paid' ? 'bg-green-50 border border-green-200 text-green-700' :
+                            act.statusBadge === 'Overdue' ? 'bg-orange-50 border border-orange-300 text-orange-700' :
+                            act.statusBadge === 'Rejected' || act.statusBadge === 'Defaulted' ? 'bg-red-50 border border-red-200 text-red-700' :
+                            act.status === 'valid' ? 'bg-emerald-50 border border-emerald-300 text-emerald-700' :
+                            act.status === 'invalid' ? 'bg-red-50 border border-red-200 text-red-700' :
+                            act.status === 'fully_paid' ? 'bg-green-50 border border-green-200 text-green-700' :
+                            'bg-gray-100 border border-gray-200 text-gray-600'
+                          }`}>
+                            {act.status === 'valid' ? '✓ Valid' :
+                             act.status === 'invalid' ? '✗ Invalid' :
+                             act.status === 'fully_paid' ? 'Fully Paid' :
+                             act.statusBadge}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          {/* P2P Lender actions */}
+                          {isActionablePeerLoan ? (
+                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                              {act.status !== 'valid' && (
+                                <button
+                                  id={`mark-valid-${act.loanId}`}
+                                  disabled={isBusy}
+                                  onClick={() => handlePeerLoanStatusChange(act.loanId, 'valid')}
+                                  style={{ padding: '4px 10px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', border: '1px solid #10b981', background: isBusy ? '#d1fae5' : '#ecfdf5', color: '#065f46', cursor: isBusy ? 'not-allowed' : 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap' }}
+                                  title="Mark as Valid — confirm debt/item was returned"
+                                >
+                                  {isBusy ? '…' : '✓ Valid'}
+                                </button>
+                              )}
+                              {act.status !== 'invalid' && (
+                                <button
+                                  id={`mark-invalid-${act.loanId}`}
+                                  disabled={isBusy}
+                                  onClick={() => handlePeerLoanStatusChange(act.loanId, 'invalid')}
+                                  style={{ padding: '4px 10px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', border: '1px solid #f87171', background: isBusy ? '#fee2e2' : '#fff5f5', color: '#991b1b', cursor: isBusy ? 'not-allowed' : 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap' }}
+                                  title="Mark as Invalid — borrower has defaulted"
+                                >
+                                  {isBusy ? '…' : '✗ Invalid'}
+                                </button>
+                              )}
+                            </div>
+                          ) : isElderManageable ? (
+                            /* Treasury Elder management buttons */
+                            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                              {/* Confirm payment */}
+                              <button
+                                id={`confirm-payment-${act.loanId}`}
+                                disabled={isBusy}
+                                onClick={() => {
+                                  const input = window.prompt(`Confirm repayment for ${act.borrowerAlias || 'borrower'}\nRemaining balance: ₱${Number(act.remainingBalance).toLocaleString('en-PH', { minimumFractionDigits: 2 })}\n\nEnter payment amount (PHP):`);
+                                  if (!input) return;
+                                  const amount = parseFloat(input.replace(/,/g, ''));
+                                  if (isNaN(amount) || amount <= 0) { alert('Invalid amount.'); return; }
+                                  confirmTreasuryRepayment(act.loanId, amount);
+                                }}
+                                style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, borderRadius: '6px', border: '1px solid #10b981', background: isBusy ? '#d1fae5' : '#ecfdf5', color: '#065f46', cursor: isBusy ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
+                                title="Confirm an off-chain repayment installment"
+                              >
+                                {isBusy ? '…' : '₱ Payment'}
+                              </button>
+                              {/* Mark Overdue */}
+                              {act.status !== 'overdue' && (
+                                <button
+                                  id={`mark-overdue-${act.loanId}`}
+                                  disabled={isBusy}
+                                  onClick={() => manageTreasuryLoanStatus(act.loanId, 'overdue')}
+                                  style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, borderRadius: '6px', border: '1px solid #f59e0b', background: isBusy ? '#fef3c7' : '#fffbeb', color: '#92400e', cursor: isBusy ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
+                                  title="Flag as overdue — missed payment deadline"
+                                >
+                                  {isBusy ? '…' : '⚠ Overdue'}
+                                </button>
+                              )}
+                              {/* Reinstate (overdue → approved) */}
+                              {act.status === 'overdue' && (
+                                <button
+                                  id={`reinstate-${act.loanId}`}
+                                  disabled={isBusy}
+                                  onClick={() => manageTreasuryLoanStatus(act.loanId, 'approved', 'Reinstated — borrower caught up')}
+                                  style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, borderRadius: '6px', border: '1px solid #6366f1', background: isBusy ? '#e0e7ff' : '#eef2ff', color: '#3730a3', cursor: isBusy ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
+                                  title="Reinstate — borrower has caught up on payments"
+                                >
+                                  {isBusy ? '…' : '↩ Reinstate'}
+                                </button>
+                              )}
+                              {/* Mark Defaulted */}
+                              <button
+                                id={`mark-defaulted-${act.loanId}`}
+                                disabled={isBusy}
+                                onClick={() => {
+                                  if (!window.confirm(`Mark this loan as DEFAULTED for ${act.borrowerAlias}?\n\nThis will activate the on-chain collateral record as evidence for enforcement.`)) return;
+                                  manageTreasuryLoanStatus(act.loanId, 'defaulted');
+                                }}
+                                style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, borderRadius: '6px', border: '1px solid #ef4444', background: isBusy ? '#fee2e2' : '#fef2f2', color: '#991b1b', cursor: isBusy ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
+                                title="Mark as defaulted — triggers on-chain collateral record"
+                              >
+                                {isBusy ? '…' : '✗ Default'}
+                              </button>
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--text-3)', fontSize: '12px' }}>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
 
           <div className="records">
