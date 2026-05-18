@@ -30,4 +30,5 @@ async function runOnce() {
 }
 
 setInterval(runOnce, 5 * 60 * 1000); // every 5 minutes
-runOnce();
+setTimeout(runOnce, 5000); // initial run after 5 seconds
+

@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { buildTxWithMetadata, fetchTxBlockNumber } from './txBuilder';
+import { buildTxWithMetadata, fetchTxDetails } from './txBuilder';
 
 const MAX_BATCH_BYTES = 16384;
 const METADATA_LABEL = 674;
@@ -44,6 +44,15 @@ function buildMetadataForBatch(batch: OnchainQueueRow[], batchId: string, commun
     community_id: communityId,
     created_at: new Date().toISOString(),
     receipts: batch.map((row) => {
+      // If the row was enqueued with the new rich onchain_payload, use it directly.
+      // It already uses abbreviated compact keys (t, ref, borrower, lender, lt, md, amt, …)
+      // and was pre-built to satisfy Cardano's 64-byte per string constraint.
+      if (row.onchain_payload && typeof row.onchain_payload === 'object') {
+        return row.onchain_payload;
+      }
+
+      // Legacy fallback: row was written by the old code path (no onchain_payload).
+      // Strip internal DB housekeeping fields and emit whatever is left.
       const receipt = { ...row };
       delete receipt.id;
       delete receipt.queue_id;
@@ -57,6 +66,7 @@ function buildMetadataForBatch(batch: OnchainQueueRow[], batchId: string, commun
       delete receipt.community_id;
       delete receipt.estimated_bytes;
       delete receipt.estimatedBytes;
+      delete receipt.onchain_payload;
       return receipt;
     }),
   };
@@ -117,16 +127,34 @@ export async function submitBatchForCommunity(communityId: string): Promise<Subm
     };
   }
 
-  const idField = getBatchKey(queuedRows);
-  const batches = splitIntoBatches(queuedRows);
+  const { data: communityInfo } = await supabaseAdmin
+    .from('communities')
+    .select('gas_balance')
+    .eq('community_id', communityId)
+    .single();
+
+  const currentGas = communityInfo?.gas_balance ?? 0;
+  
   const result: SubmitBatchResult = {
     communityId,
     queuedRows: queuedRows.length,
-    batches: batches.length,
+    batches: 0,
     etchedRows: 0,
     failedBatches: 0,
     errors: [],
   };
+
+  if (currentGas < 0.5) {
+    result.errors.push({
+      batchId: 'pre-check',
+      message: 'Insufficient gas balance. Please top up your community gas tank (needs at least 0.5 ADA).',
+    });
+    return result;
+  }
+
+  const idField = getBatchKey(queuedRows);
+  const batches = splitIntoBatches(queuedRows);
+  result.batches = batches.length;
 
   for (const batch of batches) {
     const batchId = crypto.randomUUID();
@@ -150,7 +178,9 @@ export async function submitBatchForCommunity(communityId: string): Promise<Subm
 
     try {
       const txHash = await buildTxWithMetadata(metadata, METADATA_LABEL);
-      const blockNumber = await fetchTxBlockNumber(txHash);
+      const txDetails = await fetchTxDetails(txHash);
+      const blockNumber = txDetails?.blockNumber ?? null;
+      const feeInAda = txDetails ? txDetails.fee / 1000000 : 0.17; // fallback to 0.17 ADA if blockfrost fails
 
       const { error: finalizeError } = await supabaseAdmin
         .from('onchain_queue')
@@ -164,6 +194,35 @@ export async function submitBatchForCommunity(communityId: string): Promise<Subm
 
       if (finalizeError) {
         throw new Error(`Failed to update batch rows after submit: ${finalizeError.message ?? JSON.stringify(finalizeError)}`);
+      }
+
+      // Write tx_hash back to the loans table for loan-type records
+      const loanRows = batch.filter((row) =>
+        row.record_type === 'loan_approved' || row.record_type === 'peer_loan_approved'
+      );
+      if (loanRows.length > 0) {
+        const loanIds = loanRows.map((row) => row.reference_id).filter(Boolean);
+        if (loanIds.length > 0) {
+          await supabaseAdmin
+            .from('loans')
+            .update({ tx_hash: txHash })
+            .in('loan_id', loanIds);
+        }
+      }
+
+      // Deduct the gas fee
+      if (feeInAda > 0) {
+        const { data: latestComm } = await supabaseAdmin
+          .from('communities')
+          .select('gas_balance')
+          .eq('community_id', communityId)
+          .single();
+        
+        const updatedGas = (latestComm?.gas_balance ?? 0) - feeInAda;
+        await supabaseAdmin
+          .from('communities')
+          .update({ gas_balance: updatedGas })
+          .eq('community_id', communityId);
       }
 
       result.etchedRows += batch.length;
