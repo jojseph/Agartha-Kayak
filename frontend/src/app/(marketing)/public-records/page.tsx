@@ -1,23 +1,43 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Landmark, Users, Eye, ShieldCheck, Activity } from 'lucide-react';
 
 interface PublicRecord {
   id: string;
   type: string;
+  ledgerCategory: string;
+  ledgerLabel: string;
   coop: string;
   purpose: string;
   amount: number;
+  currency: string;
   timestamp: string;
   hash: string;
   status: string;
 }
 
+type RecordTab = 'all' | 'loans' | 'members' | 'votes' | 'reconciliation' | 'gas';
+
+const RECORD_TABS: { id: RecordTab; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'loans', label: 'Loans' },
+  { id: 'members', label: 'Members' },
+  { id: 'votes', label: 'Votes' },
+  { id: 'reconciliation', label: 'Recon' },
+  { id: 'gas', label: 'Gas' },
+];
+
 export default function PublicRecordBoardPage() {
   const [records, setRecords] = useState<PublicRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [recordTab, setRecordTab] = useState<RecordTab>('all');
+
+  const filteredRecords = useMemo(() => {
+    if (recordTab === 'all') return records;
+    return records.filter(record => record.ledgerCategory === recordTab);
+  }, [records, recordTab]);
 
   useEffect(() => {
     async function fetchRecords() {
@@ -82,6 +102,24 @@ export default function PublicRecordBoardPage() {
               <ShieldCheck size={12} className="text-green-500" /> Powered by Cardano Meta-Etch
             </span>
           </div>
+          <div className="px-6 py-3 border-b border-gray-100 bg-white flex flex-wrap gap-2" role="tablist" aria-label="Public record filters">
+            {RECORD_TABS.map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={recordTab === tab.id}
+                onClick={() => setRecordTab(tab.id)}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
+                  recordTab === tab.id
+                    ? 'bg-gray-900 border-gray-900 text-white'
+                    : 'bg-white border-gray-200 text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
 
           <div className="divide-y divide-gray-100">
             {loading ? (
@@ -90,9 +128,11 @@ export default function PublicRecordBoardPage() {
               </div>
             ) : error ? (
               <div className="p-8 text-center text-red-500 text-sm">{error}</div>
-            ) : records.length === 0 ? (
-              <div className="p-8 text-center text-gray-400 text-sm">No public records found.</div>
-            ) : records.map((record) => (
+            ) : filteredRecords.length === 0 ? (
+              <div className="p-8 text-center text-gray-400 text-sm">
+                {recordTab === 'all' ? 'No public records found.' : `No ${RECORD_TABS.find(tab => tab.id === recordTab)?.label.toLowerCase()} records found.`}
+              </div>
+            ) : filteredRecords.map((record) => (
               <div key={record.id} className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-gray-50/40 transition-colors">
                 <div className="space-y-2 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -102,7 +142,7 @@ export default function PublicRecordBoardPage() {
                         : 'bg-white border border-gray-200 text-gray-700'
                     }`}>
                       {record.type === 'treasury' ? <Landmark size={10} /> : <Users size={10} />}
-                      {record.type.toUpperCase()}
+                      {record.ledgerLabel || record.type.toUpperCase()}
                     </span>
                     <span className="text-xs font-bold text-gray-400">·</span>
                     <span className="text-xs font-bold text-gray-900">{record.coop}</span>
@@ -119,7 +159,8 @@ export default function PublicRecordBoardPage() {
 
                 <div className="flex sm:flex-col items-baseline sm:items-end justify-between sm:justify-center gap-1 flex-shrink-0 border-t sm:border-t-0 pt-3 sm:pt-0 border-gray-50">
                   <span className="text-base font-bold text-gray-900">
-                    ₱ {record.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    {record.currency === 'ADA' ? 'ADA ' : 'PHP '}
+                    {record.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                   </span>
                   <span className="text-[11px] text-gray-400 block">
                     {record.timestamp}

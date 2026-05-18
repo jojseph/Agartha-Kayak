@@ -52,9 +52,30 @@ interface BatchStats {
   willOverflow: boolean;
 }
 
+interface WorkerStatus {
+  available: boolean;
+  isRunning?: boolean;
+  nextRunAt?: string | null;
+  lastStatus?: 'starting' | 'running' | 'ok' | 'failed' | string;
+  lastRunStartedAt?: string | null;
+  lastRunFinishedAt?: string | null;
+  intervalMs?: number;
+  error?: string;
+}
+
 // --- Types ---
 type Frequency = 'weekly' | 'biweekly' | 'monthly';
 type PeerMode = 'money' | 'things';
+type RecordTab = 'all' | 'loans' | 'members' | 'votes' | 'reconciliation' | 'gas';
+
+const RECORD_TABS: { id: RecordTab; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'loans', label: 'Loans' },
+  { id: 'members', label: 'Members' },
+  { id: 'votes', label: 'Votes' },
+  { id: 'reconciliation', label: 'Recon' },
+  { id: 'gas', label: 'Gas' },
+];
 
 interface Neighbor {
   wallet_address: string;
@@ -289,31 +310,43 @@ export default function DashboardTestPage() {
   const [rowVisibility, setRowVisibility] = useState<Record<string, boolean>>({});
   const [dashboardRecords, setDashboardRecords] = useState<any[]>([]);
   const [recordsLoading, setRecordsLoading] = useState(true);
+  const [recordTab, setRecordTab] = useState<RecordTab>('all');
 
-  const toggleRowVisibility = async (txKey: string) => {
+  const filteredDashboardRecords = useMemo(() => {
+    if (recordTab === 'all') return dashboardRecords;
+    return dashboardRecords.filter(record => record.ledgerCategory === recordTab);
+  }, [dashboardRecords, recordTab]);
+
+  const toggleRowVisibility = async (record: any) => {
+    if (!record.canToggleVisibility || !record.targetType || !record.targetId) return;
+    const visibilityKey = record.visibilityKey || record.targetId;
     // 1. Save the previous state in case we need to roll back
-    const previousState = rowVisibility[txKey];
+    const previousState = rowVisibility[visibilityKey] ?? record.isPublic;
     
     // 2. OPTIMISTIC UPDATE: Change the UI state instantly before hitting the network
-    setRowVisibility(prev => ({ ...prev, [txKey]: !previousState }));
+    setRowVisibility(prev => ({ ...prev, [visibilityKey]: !previousState }));
 
     try {
       // 3. Dispatch secure signature-gated PATCH call
       const res = await walletAuthFetch(wallet, '/api/transactions/visibility', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetType: 'loan', targetId: txKey, isPublic: !previousState })
+        body: JSON.stringify({ targetType: record.targetType, targetId: record.targetId, isPublic: !previousState })
       });
 
       if (!res.ok) {
         // If the server rejects it, force a rollback to the original state
         throw new Error('Server rejected visibility change authorization');
       }
+
+      setDashboardRecords(prev => prev.map(item => (
+        item.id === record.id ? { ...item, isPublic: !previousState } : item
+      )));
     } catch (err) {
       console.warn('Optimistic UI update failed. Rolling back transaction state:', err);
       alert('Authorization failed: Only an elected Elder or Owner can modify ledger visibility.');
       // 4. ROLLBACK: Revert the UI back to its true database state
-      setRowVisibility(prev => ({ ...prev, [txKey]: previousState }));
+      setRowVisibility(prev => ({ ...prev, [visibilityKey]: previousState }));
     }
   };
 
@@ -477,20 +510,59 @@ export default function DashboardTestPage() {
   });
   const [queueLoading, setQueueLoading] = useState(true);
 
-  // Countdown timer for next batch
-  const [nextBatchIn, setNextBatchIn] = useState(300); // 5 minutes in seconds
+  // Countdown timer for next batch, synced from the local worker status file.
+  const [nextBatchIn, setNextBatchIn] = useState(0);
+  const [workerStatus, setWorkerStatus] = useState<WorkerStatus | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setNextBatchIn(prev => (prev > 0 ? prev - 1 : 300));
+      setNextBatchIn(() => {
+        if (!workerStatus?.nextRunAt || workerStatus.isRunning) return 0;
+        const nextRun = new Date(workerStatus.nextRunAt).getTime();
+        if (Number.isNaN(nextRun)) return 0;
+        return Math.max(0, Math.ceil((nextRun - Date.now()) / 1000));
+      });
     }, 1000);
     return () => clearInterval(timer);
+  }, [workerStatus?.nextRunAt, workerStatus?.isRunning]);
+
+  const fetchWorkerStatus = async () => {
+    try {
+      const res = await fetch('/api/workers/status', { cache: 'no-store' });
+      const data = await res.json();
+      setWorkerStatus(data);
+      if (data.nextRunAt && !data.isRunning) {
+        const nextRun = new Date(data.nextRunAt).getTime();
+        setNextBatchIn(Number.isNaN(nextRun) ? 0 : Math.max(0, Math.ceil((nextRun - Date.now()) / 1000)));
+      } else {
+        setNextBatchIn(0);
+      }
+    } catch (err) {
+      console.error('Failed to fetch worker status:', err);
+      setWorkerStatus({ available: false, error: 'Worker status unavailable' });
+      setNextBatchIn(0);
+    }
+  };
+
+  useEffect(() => {
+    fetchWorkerStatus();
+    const interval = setInterval(fetchWorkerStatus, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const fmtTime = (s: number) => {
     const m = Math.floor(s / 60);
     const rs = s % 60;
     return `${m}:${rs < 10 ? '0' : ''}${rs}`;
+  };
+
+  const workerTimerLabel = () => {
+    if (!workerStatus) return 'Checking worker';
+    if (workerStatus?.isRunning) return 'Batch running now';
+    if (!workerStatus?.available) return 'Worker not running';
+    if (!workerStatus.nextRunAt) return 'Worker schedule pending';
+    if (nextBatchIn <= 0) return 'Batch due now';
+    return `Next batch in ${fmtTime(nextBatchIn)}`;
   };
 
   // Fetch queue data from API
@@ -561,7 +633,7 @@ export default function DashboardTestPage() {
             setDashboardRecords(d.records);
             const visibilityMap: Record<string, boolean> = {};
             d.records.forEach((r: any) => {
-              visibilityMap[r.id] = r.isPublic;
+              visibilityMap[r.visibilityKey || r.id] = r.isPublic;
             });
             setRowVisibility(visibilityMap);
           }
@@ -738,9 +810,18 @@ export default function DashboardTestPage() {
       if (res.ok) {
         setTreasuryElderRequests(prev => prev.map(r => {
           if (r.loan_id !== loanId) return r;
-          const newApprove = vote === 'approve' ? r.approve_count + 1 : r.approve_count;
+          const newApprove = typeof data.approveCount === 'number'
+            ? data.approveCount
+            : vote === 'approve' && !data.alreadyVoted
+              ? r.approve_count + 1
+              : r.approve_count;
+          const newReject = typeof data.rejectCount === 'number'
+            ? data.rejectCount
+            : vote === 'reject' && !data.alreadyVoted
+              ? r.reject_count + 1
+              : r.reject_count;
           const newStatus = data.rejected ? 'rejected' : data.approved ? 'approved' : 'pending';
-          return { ...r, my_vote: vote, approve_count: newApprove, status: newStatus, rejectionReason: reason };
+          return { ...r, my_vote: vote, approve_count: newApprove, reject_count: newReject, status: newStatus, rejectionReason: reason };
         }));
       } else {
         alert(data.error || 'Failed to cast vote.');
@@ -773,6 +854,8 @@ export default function DashboardTestPage() {
       console.error(err);
     }
   };
+
+  const canManageRecordVisibility = memberData?.role === 'elder' || memberData?.role === 'owner';
 
   return (
     <>
@@ -970,7 +1053,7 @@ export default function DashboardTestPage() {
                 <h3 className="network-queue__title"><Layers size={16} /> Network Queue</h3>
                 <div className="network-queue__sub">Pending receipts waiting to be batched and etched on-chain</div>
               </div>
-              <span className="network-queue__badge"><Clock size={11} /> Next batch in ~{fmtTime(nextBatchIn)}</span>
+              <span className="network-queue__badge"><Clock size={11} /> {workerTimerLabel()}</span>
             </div>
 
             {/* Batch Progress Bar */}
@@ -1062,10 +1145,19 @@ export default function DashboardTestPage() {
                 <h2 className="records__title">Public Record Board</h2>
                 <div className="records__sub">All transactions verified on Cardano · Updated live</div>
               </div>
-              <div className="records__filters" role="tablist">
-                <button className="is-active">All</button>
-                <button>Treasury</button>
-                <button>Member</button>
+              <div className="records__filters" role="tablist" aria-label="Public record filters">
+                {RECORD_TABS.map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={recordTab === tab.id}
+                    className={recordTab === tab.id ? 'is-active' : ''}
+                    onClick={() => setRecordTab(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -1074,10 +1166,10 @@ export default function DashboardTestPage() {
                 <tr>
                   <th>Date</th>
                   <th>Type</th>
-                  <th>Borrower</th>
+                  <th>Parties</th>
                   <th style={{ textAlign: 'right' }}>Amount</th>
                   <th style={{ textAlign: 'right' }}>Receipt</th>
-                  {(memberData?.role === 'elder' || memberData?.role === 'owner') && (
+                  {canManageRecordVisibility && (
                     <th style={{ textAlign: 'center', width: '100px' }}>Privacy</th>
                   )}
                 </tr>
@@ -1085,25 +1177,29 @@ export default function DashboardTestPage() {
               <tbody>
                 {recordsLoading ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', padding: '3rem 0' }}>
+                    <td colSpan={canManageRecordVisibility ? 6 : 5} style={{ textAlign: 'center', padding: '3rem 0' }}>
                       <Activity className="animate-spin" style={{ color: 'var(--text-3)', margin: '0 auto' }} size={24} />
                     </td>
                   </tr>
-                ) : dashboardRecords.length === 0 ? (
+                ) : filteredDashboardRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-3)' }}>
-                      No public records found.
+                    <td colSpan={canManageRecordVisibility ? 6 : 5} style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-3)' }}>
+                      {recordTab === 'all' ? 'No public records found.' : `No ${RECORD_TABS.find(tab => tab.id === recordTab)?.label.toLowerCase()} records found.`}
                     </td>
                   </tr>
                 ) : (
-                  dashboardRecords.map(record => (
+                  filteredDashboardRecords.map(record => {
+                    const visibilityKey = record.visibilityKey || record.id;
+                    const isPublicRecord = rowVisibility[visibilityKey] ?? record.isPublic;
+
+                    return (
                     <tr key={record.id}>
                       <td className="cell-date">
                         {record.shortDate}
                       </td>
                       <td>
                         <span className={`type-badge type-badge--${record.type}`}>
-                          {record.type === 'treasury' ? <Landmark size={11} /> : <Users size={11} />} {record.type.charAt(0).toUpperCase() + record.type.slice(1)}
+                          {record.type === 'treasury' ? <Landmark size={11} /> : <Users size={11} />} {record.ledgerLabel || record.type.charAt(0).toUpperCase() + record.type.slice(1)}
                         </span>
                       </td>
                       <td className="cell-borrower">
@@ -1119,22 +1215,25 @@ export default function DashboardTestPage() {
                           {record.displayHash} <ChevronRight size={11} />
                         </button>
                       </td>
-                      {(memberData?.role === 'elder' || memberData?.role === 'owner') && (
+                      {canManageRecordVisibility && (
                         <td style={{ textAlign: 'center' }}>
-                          <button 
-                            onClick={() => toggleRowVisibility(record.id)}
+                          <button
+                            type="button"
+                            onClick={() => toggleRowVisibility(record)}
+                            disabled={!record.canToggleVisibility}
                             className={`text-xs font-semibold px-2.5 py-1 rounded-md transition-all ${
-                              rowVisibility[record.id] 
+                              isPublicRecord
                                 ? 'bg-green-50 border border-green-200 text-green-700' 
                                 : 'bg-gray-100 border border-gray-200 text-gray-400'
-                            }`}
+                            } ${record.canToggleVisibility ? '' : 'cursor-default opacity-80'}`}
                           >
-                            {rowVisibility[record.id] ? 'Public' : 'Private'}
+                            {record.canToggleVisibility ? (isPublicRecord ? 'Public' : 'Private') : 'Public'}
                           </button>
                         </td>
                       )}
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -1954,25 +2053,39 @@ export default function DashboardTestPage() {
         const txRecord = dashboardRecords.find(r => r.id === txModal.txKey);
         if (!txRecord) return null;
         
-        const tx = {
-            fullHash: txRecord.fullHash,
-            type: txRecord.type,
-            purpose: txRecord.purpose,
-            amount: txRecord.amount,
-            from: { name: txRecord.fromName, meta: '', kind: txRecord.type === 'treasury' ? 'treasury' : 'person', addr: '' },
-            to: { name: txRecord.toName, meta: '', kind: 'person', addr: '' },
-            timestamp: txRecord.timestampStr,
-            block: 'Pending',
-            slot: 'Pending',
-            feeAda: 0,
-            feePhp: 0,
-            confirmations: 0,
-            confirmsTotal: 30
+        const status = (txRecord.status || 'queued').toLowerCase();
+        const isEtched = status === 'etched' && Boolean(txRecord.txHash);
+        const isFailed = status === 'failed';
+        const hasAmount = Number(txRecord.amount) > 0;
+        const amountLabel = hasAmount
+          ? `${txRecord.currency === 'ADA' ? 'ADA' : 'PHP'} ${Number(txRecord.amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : 'No amount';
+        const categoryLabel = RECORD_TABS.find(tab => tab.id === txRecord.ledgerCategory)?.label || 'Ledger';
+        const statusLabel = status === 'batched'
+          ? 'Batched'
+          : status === 'etched'
+            ? 'Etched'
+            : status === 'failed'
+              ? 'Failed'
+              : 'Queued';
+        const lifecycleMessage = status === 'batched'
+          ? 'Included in batch, etching in progress'
+          : status === 'etched'
+            ? 'Etched on Cardano'
+            : status === 'failed'
+              ? 'Queue item failed, audit IDs retained'
+              : 'Waiting for next blockchain batch';
+        const proofValue = isEtched ? txRecord.txHash : txRecord.queueId;
+        const proofLabel = isEtched ? 'Transaction hash' : 'Queue ID';
+        const statusClass = `tx-status tx-status--${isFailed ? 'failed' : status === 'etched' ? 'etched' : status === 'batched' ? 'batched' : 'queued'}`;
+        const copyValue = proofValue || txRecord.queueId || txRecord.id;
+        const shortId = (value: string | null | undefined) => {
+          if (!value) return 'Not available';
+          return value.length > 18 ? `${value.slice(0, 10)}...${value.slice(-6)}` : value;
         };
-        const isFinalized = tx.confirmations >= tx.confirmsTotal;
 
         const handleCopy = () => {
-          navigator.clipboard.writeText(tx.fullHash).then(() => {
+          navigator.clipboard.writeText(copyValue).then(() => {
             setIsCopied(true);
             setTimeout(() => setIsCopied(false), 1800);
           });
@@ -1984,79 +2097,110 @@ export default function DashboardTestPage() {
             <div className="loan-modal__dialog">
               <header className="loan-modal__header">
                 <div className="elder-modal__title-block">
-                  <div className="elder-modal__title">Transaction Receipt</div>
-                  <div className="elder-modal__sub">Verified on the Cardano blockchain</div>
+                  <div className="elder-modal__title">Ledger Receipt</div>
+                  <div className="elder-modal__sub">Community action recorded for blockchain etching</div>
                 </div>
                 <button className="loan-modal__close" onClick={() => setTxModal({ isOpen: false, txKey: null })}><X size={14} /></button>
               </header>
               <div className="loan-modal__body">
-                <span className="tx-status">
+                <span className={statusClass}>
                   <ShieldCheck size={12} strokeWidth={2.5} />
-                  {isFinalized ? 'Verified · Finalized' : 'Verified · ' + tx.confirmations + ' confirmations'}
+                  {statusLabel} - {lifecycleMessage}
                 </span>
 
                 <div className="tx-amount-block">
-                  <div className="tx-amount-block__value">₱ {tx.amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  <div className={`tx-amount-block__value ${hasAmount ? '' : 'tx-amount-block__value--none'}`}>{amountLabel}</div>
                   <div className="tx-amount-block__type">
-                    <span>{tx.type === 'treasury' ? 'Treasury Loan' : 'Member-to-Member Loan'}</span>
+                    <span>{txRecord.ledgerLabel || txRecord.recordType}</span>
                     <span className="tx-amount-block__type-dot"></span>
-                    <span>{tx.purpose}</span>
+                    <span>{txRecord.purpose}</span>
                   </div>
                 </div>
 
                 <div className="tx-parties">
                   <div className="tx-party">
-                    <span className="tx-party__label">From</span>
+                    <span className="tx-party__label">Actor</span>
                     <div className="tx-party__main">
-                      {tx.from.kind === 'treasury' ? (
+                      {txRecord.type === 'treasury' ? (
                         <span className="tx-party__avatar tx-party__avatar--treasury"><Landmark size={14} /></span>
                       ) : (
-                        <span className="tx-party__avatar">{initialsOf(tx.from.name)}</span>
+                        <span className="tx-party__avatar">{initialsOf(txRecord.fromName)}</span>
                       )}
                       <div className="tx-party__info">
-                        <div className="tx-party__name">{tx.from.name}</div>
-                        <div className="tx-party__meta">{tx.from.meta}</div>
-                        <div className="tx-party__addr">{tx.from.addr}</div>
+                        <div className="tx-party__name">{txRecord.fromName}</div>
+                        <div className="tx-party__meta">{categoryLabel} action source</div>
+                        <div className="tx-party__addr">{shortId(txRecord.referenceId)}</div>
                       </div>
                     </div>
                   </div>
                   <div className="tx-arrow"><ArrowRight size={16} /></div>
                   <div className="tx-party">
-                    <span className="tx-party__label">To</span>
+                    <span className="tx-party__label">Subject</span>
                     <div className="tx-party__main">
-                      <span className="tx-party__avatar">{initialsOf(tx.to.name)}</span>
+                      <span className="tx-party__avatar">{initialsOf(txRecord.toName)}</span>
                       <div className="tx-party__info">
-                        <div className="tx-party__name">{tx.to.name}</div>
-                        <div className="tx-party__meta">{tx.to.meta}</div>
-                        <div className="tx-party__addr">{tx.to.addr}</div>
+                        <div className="tx-party__name">{txRecord.toName}</div>
+                        <div className="tx-party__meta">{txRecord.ledgerLabel || 'Ledger record'}</div>
+                        <div className="tx-party__addr">{shortId(txRecord.queueId)}</div>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="tx-details">
+                  <div className="tx-detail-row tx-detail-row--section">
+                    <span className="tx-detail-row__label">Audit details</span>
+                    <span className="tx-detail-row__value">{txRecord.coop}</span>
+                  </div>
                   <div className="tx-detail-row">
-                    <span className="tx-detail-row__label">Date</span>
-                    <span className="tx-detail-row__value">{tx.timestamp}</span>
+                    <span className="tx-detail-row__label">Action date</span>
+                    <span className="tx-detail-row__value">{txRecord.timestampStr}</span>
+                  </div>
+                  <div className="tx-detail-row">
+                    <span className="tx-detail-row__label">Ledger category</span>
+                    <span className="tx-detail-row__value">{categoryLabel}</span>
+                  </div>
+                  <div className="tx-detail-row">
+                    <span className="tx-detail-row__label">Record type</span>
+                    <span className="tx-detail-row__value tx-detail-row__value--mono">{txRecord.recordType}</span>
+                  </div>
+                  <div className="tx-detail-row">
+                    <span className="tx-detail-row__label">Queue status</span>
+                    <span className="tx-detail-row__value">{statusLabel}</span>
+                  </div>
+                  <div className="tx-detail-row">
+                    <span className="tx-detail-row__label">Reference ID</span>
+                    <span className="tx-detail-row__value tx-detail-row__value--mono">{shortId(txRecord.referenceId)}</span>
+                  </div>
+                  <div className="tx-detail-row">
+                    <span className="tx-detail-row__label">Queue ID</span>
+                    <span className="tx-detail-row__value tx-detail-row__value--mono">{shortId(txRecord.queueId)}</span>
+                  </div>
+                </div>
+
+                <div className="tx-details">
+                  <div className="tx-detail-row tx-detail-row--section">
+                    <span className="tx-detail-row__label">Blockchain proof</span>
+                    <span className="tx-detail-row__value">{lifecycleMessage}</span>
+                  </div>
+                  <div className="tx-detail-row">
+                    <span className="tx-detail-row__label">Batch</span>
+                    <span className="tx-detail-row__value tx-detail-row__value--mono">{shortId(txRecord.batchId)}</span>
                   </div>
                   <div className="tx-detail-row">
                     <span className="tx-detail-row__label">Block</span>
-                    <span className="tx-detail-row__value tx-detail-row__value--mono">#{tx.block}</span>
-                  </div>
-                  <div className="tx-detail-row">
-                    <span className="tx-detail-row__label">Slot</span>
-                    <span className="tx-detail-row__value tx-detail-row__value--mono">{tx.slot}</span>
+                    <span className="tx-detail-row__value tx-detail-row__value--mono">{isEtched ? `#${txRecord.blockNumber || 'Pending'}` : 'Available after etching'}</span>
                   </div>
                   <div className="tx-detail-row">
                     <span className="tx-detail-row__label">Network fee</span>
-                    <span className="tx-detail-row__value">₱ {tx.feePhp.toFixed(2)} <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>({tx.feeAda} ADA)</span></span>
+                    <span className="tx-detail-row__value">Calculated after etching</span>
                   </div>
                   <div className="tx-detail-row">
                     <span className="tx-detail-row__label">Confirmations</span>
                     <span className="tx-detail-row__value">
                       <span className="tx-detail-row__value-conf">
                         <span className="dot"></span>
-                        {tx.confirmations} of {tx.confirmsTotal}{isFinalized ? ' · Finalized' : ''}
+                        {isEtched ? 'Etched transaction available' : 'Awaiting Cardano transaction'}
                       </span>
                     </span>
                   </div>
@@ -2064,18 +2208,20 @@ export default function DashboardTestPage() {
 
                 <div className="tx-hash">
                   <div className="tx-hash__head">
-                    <span className="tx-hash__label">Transaction hash</span>
+                    <span className="tx-hash__label">{proofLabel}</span>
                     <button className={`tx-hash__copy ${isCopied ? 'is-copied' : ''}`} onClick={handleCopy}>
                       {isCopied ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy</>}
                     </button>
                   </div>
-                  <div className="tx-hash__value">{tx.fullHash}</div>
+                  <div className="tx-hash__value">{proofValue}</div>
                 </div>
 
-                <a className="tx-cardanoscan" href={`https://preprod.cardanoscan.io/transaction/${tx.fullHash}`} target="_blank" rel="noopener noreferrer">
-                  View on Cardanoscan
-                  <ExternalLink size={14} />
-                </a>
+                {isEtched && (
+                  <a className="tx-cardanoscan" href={`https://preprod.cardanoscan.io/transaction/${txRecord.txHash}`} target="_blank" rel="noopener noreferrer">
+                    View on Cardanoscan
+                    <ExternalLink size={14} />
+                  </a>
+                )}
               </div>
             </div>
           </div>
@@ -2110,61 +2256,85 @@ export default function DashboardTestPage() {
                     </div>
                   )}
 
-                  {reconList.map((r: any) => (
-                    <div key={r.reconciliation_id} className={`pending-card ${r.status === 'approved' ? 'is-approved' : r.status === 'rejected' ? 'is-rejected' : ''}`} style={{ marginBottom: '12px' }}>
-                      <div className="pending-card__top">
-                        <div className="pending-card__requester">
-                          <div className="pending-card__avatar">{(r.proposer?.alias || '??').slice(0, 2).toUpperCase()}</div>
-                          <div>
-                            <div className="pending-card__rname">{r.proposer?.alias || 'Unknown'}</div>
-                            <div className="pending-card__rmeta">
-                              <span>{r.reason}</span>
+                  {reconList.map((r: any) => {
+                    const mySignature = (r.signatures || []).find((s: any) => s.elder_address === address);
+                    const approvalCount = (r.signatures || []).filter((s: any) => s.decision === 'approve').length;
+                    const canSign = r.status === 'pending' && r.proposed_by !== address && !mySignature;
+
+                    return (
+                      <div key={r.reconciliation_id} className={`pending-card ${r.status === 'approved' ? 'is-approved' : r.status === 'rejected' ? 'is-rejected' : ''}`} style={{ marginBottom: '12px', ...(mySignature && r.status === 'pending' ? { opacity: 0.7 } : {}) }}>
+                        <div className="pending-card__top">
+                          <div className="pending-card__requester">
+                            <div className="pending-card__avatar">{(r.proposer?.alias || '??').slice(0, 2).toUpperCase()}</div>
+                            <div>
+                              <div className="pending-card__rname">{r.proposer?.alias || 'Unknown'}</div>
+                              <div className="pending-card__rmeta">
+                                <span>{r.reason}</span>
+                              </div>
                             </div>
                           </div>
+                          <div className="pending-card__amount">
+                            <div style={{ fontSize: '13px', color: 'var(--text-3)' }}>Previous</div>
+                            <div style={{ fontSize: '16px', fontWeight: 600 }}>{fmtPesoShort(r.previous_balance)}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '4px' }}>Proposed</div>
+                            <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--status-green)' }}>{fmtPesoShort(r.proposed_balance)}</div>
+                          </div>
                         </div>
-                        <div className="pending-card__amount">
-                          <div style={{ fontSize: '13px', color: 'var(--text-3)' }}>Previous</div>
-                          <div style={{ fontSize: '16px', fontWeight: 600 }}>{fmtPesoShort(r.previous_balance)}</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '4px' }}>Proposed</div>
-                          <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--status-green)' }}>{fmtPesoShort(r.proposed_balance)}</div>
+                        <div className="pending-card__details">
+                          <div><span className="pending-card__detail-label">Status</span><span className="pending-card__detail-value" style={{ textTransform: 'capitalize' }}>{r.status}</span></div>
+                          <div><span className="pending-card__detail-label">Sigs Required</span><span className="pending-card__detail-value">{r.sigs_required}</span></div>
+                          <div><span className="pending-card__detail-label">Approvals</span><span className="pending-card__detail-value">{approvalCount}</span></div>
+                          <div><span className="pending-card__detail-label">Created</span><span className="pending-card__detail-value">{new Date(r.created_at).toLocaleDateString()}</span></div>
                         </div>
+                        {mySignature && r.status === 'pending' && (
+                          <div style={{ padding: '12px 20px', background: 'var(--surface-2)', borderTop: '1px solid var(--border)', fontSize: '12.5px', color: mySignature.decision === 'approve' ? 'var(--status-green)' : '#b91c1c', fontWeight: 600 }}>
+                            {mySignature.decision === 'approve' ? 'You approved this reconciliation' : 'You rejected this reconciliation'}
+                          </div>
+                        )}
+                        {canSign && (
+                          <div className="pending-card__actions">
+                            <button className="btn-reject" onClick={async () => {
+                              const res = await walletAuthFetch(wallet, '/api/treasury/reconciliation/sign', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ elderAddress: address, reconciliationId: r.reconciliation_id, decision: 'reject' })
+                              });
+                              const data = await res.json();
+                              if (res.ok) {
+                                setReconList(prev => prev.map(x => x.reconciliation_id === r.reconciliation_id ? {
+                                  ...x,
+                                  status: data.outcome || 'rejected',
+                                  signatures: [...(x.signatures || []).filter((s: any) => s.elder_address !== address), { elder_address: address, decision: 'reject', signed_at: new Date().toISOString() }],
+                                } : x));
+                                setPendingCounts(prev => ({ ...prev, reconciliations: Math.max(0, prev.reconciliations - 1) }));
+                              } else { alert(data.error || 'Failed to sign'); }
+                            }}><X size={14} /> Reject</button>
+                            <button className="btn-approve" onClick={async () => {
+                              const res = await walletAuthFetch(wallet, '/api/treasury/reconciliation/sign', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ elderAddress: address, reconciliationId: r.reconciliation_id, decision: 'approve' })
+                              });
+                              const data = await res.json();
+                              if (res.ok) {
+                                setReconList(prev => prev.map(x => x.reconciliation_id === r.reconciliation_id ? {
+                                  ...x,
+                                  status: data.outcome || 'pending',
+                                  signatures: [...(x.signatures || []).filter((s: any) => s.elder_address !== address), { elder_address: address, decision: 'approve', signed_at: new Date().toISOString() }],
+                                } : x));
+                                setPendingCounts(prev => ({ ...prev, reconciliations: Math.max(0, prev.reconciliations - 1) }));
+                                if (data.resolved) {
+                                  // Refresh community stats
+                                  fetch(`/api/community/stats?address=${address}`)
+                                    .then(r => r.json()).then(d => { if (d.treasuryBalance !== undefined) setCommunityStats(d); }).catch(console.error);
+                                }
+                              } else { alert(data.error || 'Failed to sign'); }
+                            }}><Check size={14} /> Approve</button>
+                          </div>
+                        )}
                       </div>
-                      <div className="pending-card__details">
-                        <div><span className="pending-card__detail-label">Status</span><span className="pending-card__detail-value" style={{ textTransform: 'capitalize' }}>{r.status}</span></div>
-                        <div><span className="pending-card__detail-label">Sigs Required</span><span className="pending-card__detail-value">{r.sigs_required}</span></div>
-                        <div><span className="pending-card__detail-label">Approvals</span><span className="pending-card__detail-value">{(r.signatures || []).filter((s: any) => s.decision === 'approve').length}</span></div>
-                        <div><span className="pending-card__detail-label">Created</span><span className="pending-card__detail-value">{new Date(r.created_at).toLocaleDateString()}</span></div>
-                      </div>
-                      {r.status === 'pending' && r.proposed_by !== address && (
-                        <div className="pending-card__actions">
-                          <button className="btn-reject" onClick={async () => {
-                            const res = await walletAuthFetch(wallet, '/api/treasury/reconciliation/sign', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ elderAddress: address, reconciliationId: r.reconciliation_id, decision: 'reject' })
-                            });
-                            if (res.ok) { setReconList(prev => prev.map(x => x.reconciliation_id === r.reconciliation_id ? { ...x, status: 'rejected' } : x)); }
-                          }}><X size={14} /> Reject</button>
-                          <button className="btn-approve" onClick={async () => {
-                            const res = await walletAuthFetch(wallet, '/api/treasury/reconciliation/sign', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ elderAddress: address, reconciliationId: r.reconciliation_id, decision: 'approve' })
-                            });
-                            const data = await res.json();
-                            if (res.ok) {
-                              setReconList(prev => prev.map(x => x.reconciliation_id === r.reconciliation_id ? { ...x, status: data.outcome || 'pending' } : x));
-                              if (data.resolved) {
-                                // Refresh community stats
-                                fetch(`/api/community/stats?address=${address}`)
-                                  .then(r => r.json()).then(d => { if (d.treasuryBalance !== undefined) setCommunityStats(d); }).catch(console.error);
-                              }
-                            } else { alert(data.error || 'Failed to sign'); }
-                          }}><Check size={14} /> Approve</button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </>
               ) : (
                 <section className="loan-step is-active">
@@ -2918,6 +3088,7 @@ const CUSTOM_CSS = `
     padding: 22px 26px 18px;
     border-bottom: 1px solid var(--border);
     gap: 16px;
+    flex-wrap: wrap;
   }
   .records__title {
     font-weight: 700;
@@ -2930,11 +3101,13 @@ const CUSTOM_CSS = `
   .records__filters {
     display: inline-flex;
     align-items: center;
+    flex-wrap: wrap;
     background: var(--surface-2);
     border: 1px solid var(--border);
-    border-radius: 999px;
+    border-radius: 14px;
     padding: 3px;
     gap: 2px;
+    justify-content: flex-end;
   }
   .records__filters button {
     background: transparent;
@@ -2942,9 +3115,10 @@ const CUSTOM_CSS = `
     color: var(--text-2);
     font-size: 12px;
     font-weight: 500;
-    padding: 6px 12px;
-    border-radius: 999px;
+    padding: 6px 10px;
+    border-radius: 10px;
     transition: background 160ms ease, color 160ms ease;
+    white-space: nowrap;
   }
   .records__filters button.is-active {
     background: var(--text);
@@ -3365,8 +3539,13 @@ const CUSTOM_CSS = `
 
   /* TX Receipt */
   .tx-status { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 999px; background: var(--status-green-bg); border: 1px solid var(--status-green-border); color: var(--status-green); font-size: 12px; font-weight: 500; margin-bottom: 22px; }
+  .tx-status--queued { background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.24); color: #b45309; }
+  .tx-status--batched { background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.24); color: #2563eb; }
+  .tx-status--etched { background: var(--status-green-bg); border-color: var(--status-green-border); color: var(--status-green); }
+  .tx-status--failed { background: rgba(220, 38, 38, 0.08); border-color: rgba(220, 38, 38, 0.22); color: #b91c1c; }
   .tx-amount-block { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 24px; padding-bottom: 22px; border-bottom: 1px solid var(--border); }
   .tx-amount-block__value { font-size: 42px; font-weight: 800; line-height: 1; color: var(--text); letter-spacing: -0.04em; margin-bottom: 10px; }
+  .tx-amount-block__value--none { font-size: 30px; letter-spacing: -0.02em; color: var(--text-2); }
   .tx-amount-block__type { display: inline-flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-2); letter-spacing: 0.10em; text-transform: uppercase; font-weight: 600; }
   .tx-amount-block__type-dot { width: 4px; height: 4px; border-radius: 999px; background: var(--text-3); }
   .tx-parties { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin-bottom: 22px; padding: 16px 0; border-bottom: 1px solid var(--border); }
@@ -3382,6 +3561,8 @@ const CUSTOM_CSS = `
   .tx-arrow { display: grid; place-items: center; color: var(--text-3); flex-shrink: 0; padding-top: 22px; }
   .tx-details { display: flex; flex-direction: column; gap: 0; margin-bottom: 22px; padding: 4px 18px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; }
   .tx-detail-row { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; padding: 11px 0; border-bottom: 1px solid var(--border); gap: 12px; }
+  .tx-detail-row--section { padding-top: 9px; }
+  .tx-detail-row--section .tx-detail-row__label { color: var(--text); font-weight: 700; }
   .tx-detail-row:last-child { border-bottom: 0; }
   .tx-detail-row__label { color: var(--text-2); flex-shrink: 0; }
   .tx-detail-row__value { color: var(--text); font-weight: 500; text-align: right; }
