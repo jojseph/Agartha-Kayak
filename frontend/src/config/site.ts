@@ -4,8 +4,8 @@
  */
 
 export const siteConfig = {
-  name: "Agartha Reef",
-  description: "Explore the depths of Agartha Reef",
+  name: "Agartha Kayak",
+  description: "Explore the depths of Agartha Kayak",
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
   ogImage: "/og-image.png",
   links: {
