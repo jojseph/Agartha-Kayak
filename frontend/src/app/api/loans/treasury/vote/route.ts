@@ -151,9 +151,18 @@ export async function POST(request: Request) {
             // Enqueue the approval receipt for on-chain etching
             const { data: approvedLoan } = await supabaseAdmin
                 .from('loans')
-                .select('amount, purpose, borrower_address')
+                .select('amount, purpose, borrower_address, collateral, term_months, currency, mode')
                 .eq('loan_id', loanId)
                 .single();
+
+            // Fetch all wallets that voted to approve this loan
+            const { data: approveVotes } = await supabaseAdmin
+                .from('treasury_loan_votes')
+                .select('elder_address')
+                .eq('loan_id', loanId)
+                .eq('vote', 'approve');
+
+            const approverAddressList = (approveVotes ?? []).map((v: any) => v.elder_address);
 
             if (approvedLoan) {
                 await enqueueReceipt({
@@ -161,8 +170,14 @@ export async function POST(request: Request) {
                     recordType: 'loan_approved',
                     referenceId: loanId,
                     memberAddress: approvedLoan.borrower_address,
-                    summary: `Treasury Loan ₱${Number(approvedLoan.amount).toLocaleString()} — ${approvedLoan.purpose}`,
-                    estimatedBytes: 320,
+                    loanType: 'TRS',
+                    mode: 'M',
+                    amount: approvedLoan.amount,
+                    currency: approvedLoan.currency ?? 'PHP',
+                    purpose: approvedLoan.purpose,
+                    collateral: approvedLoan.collateral,
+                    termMonths: approvedLoan.term_months,
+                    approvedBy: approverAddressList,
                 });
             }
         }
@@ -182,9 +197,27 @@ export async function POST(request: Request) {
             // Enqueue the rejection receipt for on-chain etching
             const { data: rejectedLoan } = await supabaseAdmin
                 .from('loans')
-                .select('amount, purpose, borrower_address')
+                .select('amount, purpose, borrower_address, collateral, term_months, currency, mode')
                 .eq('loan_id', loanId)
                 .single();
+
+            // Fetch all wallets that voted to reject this loan
+            const { data: rejectVotes } = await supabaseAdmin
+                .from('treasury_loan_votes')
+                .select('elder_address')
+                .eq('loan_id', loanId)
+                .eq('vote', 'reject');
+
+            const rejecterAddressList = (rejectVotes ?? []).map((v: any) => v.elder_address);
+
+            // Also fetch approve votes so far for full record transparency
+            const { data: approveVotesOnReject } = await supabaseAdmin
+                .from('treasury_loan_votes')
+                .select('elder_address')
+                .eq('loan_id', loanId)
+                .eq('vote', 'approve');
+
+            const approverAddressesOnReject = (approveVotesOnReject ?? []).map((v: any) => v.elder_address);
 
             if (rejectedLoan) {
                 await enqueueReceipt({
@@ -192,8 +225,16 @@ export async function POST(request: Request) {
                     recordType: 'loan_rejected',
                     referenceId: loanId,
                     memberAddress: rejectedLoan.borrower_address,
-                    summary: `Treasury Loan ₱${Number(rejectedLoan.amount).toLocaleString()} — Rejected`,
-                    estimatedBytes: 280,
+                    loanType: 'TRS',
+                    mode: 'M',
+                    amount: rejectedLoan.amount,
+                    currency: rejectedLoan.currency ?? 'PHP',
+                    purpose: rejectedLoan.purpose,
+                    collateral: rejectedLoan.collateral,
+                    termMonths: rejectedLoan.term_months,
+                    rejectedBy: rejecterAddressList,
+                    approvedBy: approverAddressesOnReject,
+                    action: 'reject',
                 });
             }
         }

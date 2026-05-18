@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server';
 import { verifyAddressAuth } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { enqueueReceipt } from '@/lib/enqueueReceipt';
 
 const DEFAULT_GRACE_DAYS = 60;
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-function estimatePayloadBytes(payload: object) {
-  return Buffer.byteLength(JSON.stringify(payload), 'utf8');
-}
 
 export async function POST(request: Request) {
   try {
@@ -49,20 +47,18 @@ export async function POST(request: Request) {
         .update({ status: 'defaulted' })
         .eq('loan_id', loan.loan_id);
 
-      const payload = {
-        loanId: loan.loan_id,
-        borrower: loan.borrower_address,
+      await enqueueReceipt({
+        communityId: loan.community_id,
+        recordType: 'loan_defaulted',
+        referenceId: loan.loan_id,
+        memberAddress: loan.borrower_address,
+        loanType: 'TRS',
+        mode: 'M',
+        amount: loan.amount,
+        currency: loan.currency ?? 'PHP',
+        purpose: loan.purpose,
         dueDate: loan.needed_by_date,
-        defaultedAt: nowIso,
-      };
-
-      await supabaseAdmin.from('onchain_queue').insert({
-        community_id: loan.community_id,
-        record_type: 'loan_defaulted',
-        payload,
-        status: 'queued',
-        estimated_bytes: estimatePayloadBytes(payload),
-        created_at: nowIso,
+        action: 'defaulted',
       });
 
       defaultedCount += 1;
