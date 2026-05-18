@@ -13,6 +13,14 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
  *   peer_loan_settled       → P2P_SET
  *   loan_defaulted          → TL_DEF
  *   member_approved         → MBR_APR
+ *   member_rejected         → MBR_REJ
+ *   peer_loan_rejected      → P2P_REJ
+ *   reconciliation_proposed → RECON_PROP
+ *   reconciliation_signature→ RECON_SIG
+ *   reconciliation_rejected → RECON_REJ
+ *   gas_topup_proposed      → GAS_PROP
+ *   gas_topup_approved      → GAS_APR
+ *   gas_topup_executed      → GAS_EXEC
  */
 export type RecordType =
     | 'loan_approved'
@@ -24,7 +32,15 @@ export type RecordType =
     | 'peer_loan_approved'
     | 'peer_loan_settled'
     | 'loan_defaulted'
-    | 'member_approved';
+    | 'member_approved'
+    | 'member_rejected'
+    | 'peer_loan_rejected'
+    | 'reconciliation_proposed'
+    | 'reconciliation_signature'
+    | 'reconciliation_rejected'
+    | 'gas_topup_proposed'
+    | 'gas_topup_approved'
+    | 'gas_topup_executed';
 
 export const RECORD_TYPE_CODE: Record<RecordType, string> = {
     loan_approved:           'TL_APR',
@@ -37,6 +53,14 @@ export const RECORD_TYPE_CODE: Record<RecordType, string> = {
     peer_loan_settled:       'P2P_SET',
     loan_defaulted:          'TL_DEF',
     member_approved:         'MBR_APR',
+    member_rejected:         'MBR_REJ',
+    peer_loan_rejected:      'P2P_REJ',
+    reconciliation_proposed:  'RECON_PROP',
+    reconciliation_signature: 'RECON_SIG',
+    reconciliation_rejected:  'RECON_REJ',
+    gas_topup_proposed:      'GAS_PROP',
+    gas_topup_approved:      'GAS_APR',
+    gas_topup_executed:      'GAS_EXEC',
 };
 
 /**
@@ -157,6 +181,8 @@ function buildAutoSummary(params: Parameters<typeof enqueueReceipt>[0]): string 
             return `[${code}] ${params.loanType ?? 'TRS'} ${amtStr} — ${params.purpose ?? ''} | rejt: ${(params.rejectedBy ?? []).length} voters`;
         case 'peer_loan_approved':
             return `[${code}] P2P ${params.mode === 'T' ? 'Things' : 'Money'} ${amtStr} — ${params.purpose ?? ''} | lender: ${params.lenderAddress ?? ''}`;
+        case 'peer_loan_rejected':
+            return `[${code}] P2P rejected ${amtStr} — ${params.purpose ?? ''} | lender: ${params.lenderAddress ?? ''}`;
         case 'peer_loan_settled':
             return `[${code}] P2P settled ${amtStr}`;
         case 'vote_cast':
@@ -167,10 +193,24 @@ function buildAutoSummary(params: Parameters<typeof enqueueReceipt>[0]): string 
             return `[${code}] ${amtStr} — new member | appr: ${params.approvedBy?.[0] ?? ''}`;
         case 'reconciliation_approved':
             return `[${code}] ${amtStr} adjustment — ${params.purpose ?? ''} | appr: ${(params.approvedBy ?? []).length} signers`;
+        case 'reconciliation_proposed':
+            return `[${code}] proposed ${amtStr} adjustment — ${params.purpose ?? ''}`;
+        case 'reconciliation_signature':
+            return `[${code}] ${params.action ?? ''} by ${params.memberAddress} — ${params.purpose ?? ''}`;
+        case 'reconciliation_rejected':
+            return `[${code}] rejected adjustment — ${params.purpose ?? ''} | rejt: ${(params.rejectedBy ?? []).length} signers`;
         case 'loan_defaulted':
             return `[${code}] borrower: ${params.memberAddress} due: ${params.dueDate ?? ''}`;
         case 'member_approved':
             return `[${code}] member: ${params.memberAddress} | appr: ${params.approvedBy?.[0] ?? ''}`;
+        case 'member_rejected':
+            return `[${code}] member: ${params.memberAddress} | rejt: ${params.rejectedBy?.[0] ?? ''}`;
+        case 'gas_topup_proposed':
+            return `[${code}] ${amtStr} gas top-up proposed — ${params.purpose ?? ''}`;
+        case 'gas_topup_approved':
+            return `[${code}] ${amtStr} gas top-up approved — ${params.purpose ?? ''} | appr: ${(params.approvedBy ?? []).length} signers`;
+        case 'gas_topup_executed':
+            return `[${code}] ${amtStr} gas top-up executed — ${params.purpose ?? ''}`;
         default:
             return `[${code}] ref: ${params.referenceId}`;
     }
