@@ -26,7 +26,7 @@ export async function GET(request: Request) {
         // Get treasury balance from communities table
         const { data: community, error: communityError } = await supabaseAdmin
             .from('communities')
-            .select('treasury_balance, name')
+            .select('treasury_balance, name, gas_balance')
             .eq('community_id', communityId)
             .single();
 
@@ -68,6 +68,7 @@ export async function GET(request: Request) {
         return NextResponse.json({
             communityName: community.name,
             treasuryBalance: community.treasury_balance ?? 0,
+            gasBalance: community.gas_balance ?? 0,
             activeLoanCount: treasuryLoanCount + peerLoanCount,
             treasuryLoanCount,
             peerLoanCount,

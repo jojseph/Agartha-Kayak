@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useWallet } from '@meshsdk/react';
+import { MeshTxBuilder, BlockfrostProvider, type UTxO } from '@meshsdk/core';
 import { useRouter } from 'next/navigation';
 import { resolveWalletAddress, walletAuthFetch } from '@/lib/walletAuthClient';
 import {
@@ -102,6 +103,7 @@ interface PendingMember {
 
 interface CommunityStats {
   treasuryBalance: number;
+  gasBalance: number;
   activeLoanCount: number;
   treasuryLoanCount: number;
   peerLoanCount: number;
@@ -408,6 +410,7 @@ export default function DashboardTestPage() {
   // Community stats (dynamic)
   const [communityStats, setCommunityStats] = useState<CommunityStats>({
     treasuryBalance: 0,
+    gasBalance: 0,
     activeLoanCount: 0,
     treasuryLoanCount: 0,
     peerLoanCount: 0,
@@ -436,6 +439,14 @@ export default function DashboardTestPage() {
   const [reconProposing, setReconProposing] = useState(false);
   const [reconBalance, setReconBalance] = useState('');
   const [reconReason, setReconReason] = useState('');
+
+  // Gas Top-Up state
+  const [gasModalOpen, setGasModalOpen] = useState(false);
+  const [gasList, setGasList] = useState<any[]>([]);
+  const [gasProposing, setGasProposing] = useState(false);
+  const [gasAmount, setGasAmount] = useState('');
+  const [gasReason, setGasReason] = useState('');
+
 
   // Treasury Loan Form State
   const [tAmount, setTAmount] = useState(0);
@@ -517,6 +528,7 @@ export default function DashboardTestPage() {
           if (d.treasuryBalance !== undefined) {
             setCommunityStats({
               treasuryBalance: d.treasuryBalance,
+              gasBalance: d.gasBalance,
               activeLoanCount: d.activeLoanCount,
               treasuryLoanCount: d.treasuryLoanCount,
               peerLoanCount: d.peerLoanCount,
@@ -844,6 +856,29 @@ export default function DashboardTestPage() {
                   } catch (err) { console.error(err); }
                   setReconModalOpen(true);
                 }}>Review Now</button>
+              </div>
+
+              <div className="elder-panel" style={{ marginBottom: '12px', background: 'var(--text-2)' }}>
+                <span className="elder-panel__icon" aria-hidden="true"><Database size={16} /></span>
+                <div className="elder-panel__body">
+                  <div className="elder-panel__head">Gas Tank & Sync Network</div>
+                  <div className="elder-panel__msg">
+                    Current balance: <strong>{communityStats.gasBalance} ADA</strong>. Propose top-ups to keep the background worker syncing.
+                  </div>
+                </div>
+                <button className="elder-panel__cta" onClick={async () => {
+                  if (!address) return;
+                  try {
+                    const res = await fetch(`/api/treasury/gas/pending?address=${address}`);
+                    if (res.ok) {
+                      const data = await res.json();
+                      setGasList(data.proposals || []);
+                    }
+                  } catch (err) {
+                    console.error(err);
+                  }
+                  setGasModalOpen(true);
+                }}>Manage Gas</button>
               </div>
             </>
           )}
@@ -2037,7 +2072,7 @@ export default function DashboardTestPage() {
                   <div className="tx-hash__value">{tx.fullHash}</div>
                 </div>
 
-                <a className="tx-cardanoscan" href={`https://cardanoscan.io/transaction/${tx.fullHash}`} target="_blank" rel="noopener noreferrer">
+                <a className="tx-cardanoscan" href={`https://preprod.cardanoscan.io/transaction/${tx.fullHash}`} target="_blank" rel="noopener noreferrer">
                   View on Cardanoscan
                   <ExternalLink size={14} />
                 </a>
@@ -2176,7 +2211,193 @@ export default function DashboardTestPage() {
         </div>
       )}
 
+      {/* Gas Top-Up Modal */}
+      {gasModalOpen && (
+        <div className="loan-modal is-open">
+          <div className="loan-modal__backdrop" onClick={() => setGasModalOpen(false)} />
+          <div className="loan-modal__dialog">
+            <div className="loan-modal__header">
+              <div className="loan-modal__stepper" style={{ color: 'var(--text)' }}>
+                <Database size={16} /> <strong>Gas Tank & Sync Network</strong>
+              </div>
+              <button className="loan-modal__close" onClick={() => setGasModalOpen(false)}><X size={18} /></button>
+            </div>
+            <div className="loan-modal__body">
+              {!gasProposing ? (
+                <>
+                  <button className="btn btn-primary" style={{ width: '100%', marginBottom: '18px' }} onClick={() => setGasProposing(true)}>
+                    <Database size={14} /> Propose Gas Top-Up
+                  </button>
 
+                  {gasList.length === 0 && (
+                    <div className="elder-empty is-visible">
+                      <div className="elder-empty__icon"><Check size={22} /></div>
+                      <div className="elder-empty__title">Tank is Good</div>
+                      <div className="elder-empty__sub">No pending gas top-ups required.</div>
+                    </div>
+                  )}
+
+                  {gasList.map((g: any) => (
+                    <div key={g.id} className={`pending-card ${g.status === 'approved' ? 'is-approved' : g.status === 'executed' ? 'is-executed' : ''}`} style={{ marginBottom: '12px' }}>
+                      <div className="pending-card__top">
+                        <div className="pending-card__requester">
+                          <div>
+                            <div className="pending-card__rname">Proposer: {g.proposed_by.slice(0, 8)}...</div>
+                            <div className="pending-card__rmeta">
+                              <span>{g.reason}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="pending-card__amount">
+                          <div style={{ fontSize: '13px', color: 'var(--text-3)' }}>Amount</div>
+                          <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text)' }}>{g.amount} tADA</div>
+                        </div>
+                      </div>
+                      <div className="pending-card__details">
+                        <div><span className="pending-card__detail-label">Status</span><span className="pending-card__detail-value" style={{ textTransform: 'capitalize' }}>{g.status}</span></div>
+                        <div><span className="pending-card__detail-label">Approvals</span><span className="pending-card__detail-value">{g.signature_count} / {g.sigs_required}</span></div>
+                        <div><span className="pending-card__detail-label">Created</span><span className="pending-card__detail-value">{new Date(g.created_at).toLocaleDateString()}</span></div>
+                      </div>
+
+                      {/* Approving */}
+                      {g.status === 'pending' && !g.has_signed && memberData?.role === 'elder' && (
+                        <div className="pending-card__actions">
+                          <button className="btn-approve" onClick={async () => {
+                            const res = await walletAuthFetch(wallet, '/api/treasury/gas/approve', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ proposalId: g.id })
+                            });
+                            const data = await res.json();
+                            if (res.ok) {
+                              setGasList(prev => prev.map(x => x.id === g.id ? { ...x, status: data.status, signature_count: data.signatures, has_signed: true } : x));
+                            } else { alert(data.error || 'Failed to sign'); }
+                          }}><Check size={14} /> Approve</button>
+                        </div>
+                      )}
+
+                      {/* Executing (Owner Only) */}
+                      {g.status === 'approved' && memberData?.role === 'owner' && (
+                        <div className="pending-card__actions">
+                          <button className="btn-primary" onClick={async () => {
+                            try {
+                              // Mesh React v2 returns CIP-30 hex data from the base methods.
+                              // The tx builder needs Mesh UTXO objects and bech32 addresses.
+                              const meshWallet = wallet as typeof wallet & {
+                                getUtxosMesh?: () => Promise<UTxO[]>;
+                                getChangeAddressBech32?: () => Promise<string>;
+                                signTxReturnFullTx?: (tx: string, partialSign?: boolean) => Promise<string>;
+                              };
+                              const amountAda = Number(g.amount);
+                              const amountLovelaceNumber = Math.floor(amountAda * 1000000);
+                              const amountLovelace = amountLovelaceNumber.toString();
+                              if (!Number.isFinite(amountAda) || amountLovelaceNumber <= 0) {
+                                throw new Error("Invalid proposal amount");
+                              }
+
+                              const utxos = (meshWallet.getUtxosMesh
+                                ? await meshWallet.getUtxosMesh()
+                                : await wallet.getUtxos()) as UTxO[];
+                              if (!utxos || utxos.length === 0) {
+                                throw new Error("No UTXOs found in your wallet. Ensure you have tADA in your Lace wallet.");
+                              }
+
+                              const masterAddress = process.env.NEXT_PUBLIC_CARDANO_SUBMITTER_ADDRESS || 'addr_test1vz03hd2vh5vzrm3d586fztnx9enksfdrgufh484ygagnnyqvudeht';
+                              const blockfrostProjectId = process.env.NEXT_PUBLIC_BLOCKFROST_PROJECT_ID;
+                              if (!blockfrostProjectId) {
+                                throw new Error("Missing NEXT_PUBLIC_BLOCKFROST_PROJECT_ID. Add your preprod Blockfrost project ID to the frontend environment.");
+                              }
+                              
+                              const provider = new BlockfrostProvider(blockfrostProjectId);
+                              const builder = new MeshTxBuilder({ fetcher: provider, submitter: provider });
+                              const changeAddress = meshWallet.getChangeAddressBech32
+                                ? await meshWallet.getChangeAddressBech32()
+                                : await wallet.getChangeAddress();
+                              if (!changeAddress.startsWith('addr')) {
+                                throw new Error("Wallet returned a non-bech32 change address. Reconnect Lace and try again.");
+                              }
+                              
+                              builder
+                                .txOut(masterAddress, [{ unit: "lovelace", quantity: amountLovelace }])
+                                .changeAddress(changeAddress)
+                                .selectUtxosFrom(utxos);
+                              
+                              const unsignedTx = await builder.complete();
+                              const signedTx = meshWallet.signTxReturnFullTx
+                                ? await meshWallet.signTxReturnFullTx(unsignedTx)
+                                : await wallet.signTx(unsignedTx, false);
+                              const txHash = await wallet.submitTx(signedTx);
+
+                              if (!txHash) return;
+
+                              const res = await walletAuthFetch(wallet, '/api/treasury/gas/execute', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ proposalId: g.id, txHash })
+                              });
+                              
+                              const data = await res.json();
+                              if (res.ok) {
+                                setGasList(prev => prev.map(x => x.id === g.id ? { ...x, status: 'executed' } : x));
+                                // Refresh stats
+                                fetch(`/api/community/stats?address=${address}`)
+                                  .then(r => r.json()).then(d => { if (d.treasuryBalance !== undefined) setCommunityStats(d); }).catch(console.error);
+                                alert('Gas top-up executed! Transaction submitted to the blockchain. The worker will resume shortly.');
+                              } else { alert(data.error || 'Execution failed on server'); }
+                            } catch (err: any) {
+                              console.error('Lace transaction failed:', err);
+                              alert('Transaction failed or was canceled: ' + err.message);
+                            }
+                          }}><ArrowUpRight size={14} /> Execute & Send tADA</button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <section className="loan-step is-active">
+                  <h2 className="loan-step__title">Propose Gas Top-Up</h2>
+                  <p className="loan-step__sub">Request to send tADA from the Treasury to the Master Worker Wallet to pay for sync fees.</p>
+
+                  <div className="field" style={{ marginBottom: '14px' }}>
+                    <label className="field__label">Amount (tADA)</label>
+                    <input className="input" type="number" min="1" step="1" placeholder="e.g. 5" value={gasAmount} onChange={e => setGasAmount(e.target.value)} />
+                  </div>
+
+                  <div className="field" style={{ marginBottom: '14px' }}>
+                    <label className="field__label">Reason</label>
+                    <textarea className="input input--purpose" placeholder="Why are we topping up?" value={gasReason} onChange={e => setGasReason(e.target.value)} />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="btn-reject" style={{ flex: 1 }} onClick={() => setGasProposing(false)}>
+                      Cancel
+                    </button>
+                    <button className="btn-approve" style={{ flex: 1 }} disabled={!gasAmount || !gasReason.trim()} onClick={async () => {
+                      const res = await walletAuthFetch(wallet, '/api/treasury/gas/propose', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ amount: Number(gasAmount), reason: gasReason })
+                      });
+                      const data = await res.json();
+                      if (res.ok) {
+                        setGasProposing(false);
+                        setGasAmount('');
+                        setGasReason('');
+                        // Re-fetch
+                        const listRes = await fetch(`/api/treasury/gas/pending?address=${address}`);
+                        if (listRes.ok) { const d = await listRes.json(); setGasList(d.proposals || []); }
+                      } else { alert(data.error || 'Failed to propose'); }
+                    }}>
+                      <Database size={14} /> Submit Proposal
+                    </button>
+                  </div>
+                </section>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
     </>
   );
