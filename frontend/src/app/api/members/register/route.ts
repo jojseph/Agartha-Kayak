@@ -19,6 +19,17 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'walletAddress in body must match the signing wallet' }, { status: 403 });
         }
 
+        // members.wallet_address now FKs to wallets (phase4_wallets_identity) —
+        // ensure the wallet identity exists before inserting the member.
+        const { error: walletError } = await supabaseAdmin
+            .from('wallets')
+            .upsert({ wallet_address: walletAddress }, { onConflict: 'wallet_address', ignoreDuplicates: true });
+
+        if (walletError) {
+            console.error('Supabase wallet upsert error:', walletError);
+            return NextResponse.json({ error: 'Failed to register wallet identity', details: walletError.message }, { status: 500 });
+        }
+
         // Insert the new member into Supabase
         const { data, error } = await supabaseAdmin
             .from('members')

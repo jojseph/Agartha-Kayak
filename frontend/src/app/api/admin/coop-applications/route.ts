@@ -95,6 +95,21 @@ export async function PATCH(request: Request) {
     }
 
     // action === 'approved'
+    // Ensure the applicant's wallet identity exists first — communities.owner_address
+    // and members.wallet_address both FK to wallets (phase4_wallets_identity), which
+    // is what breaks the communities<->members cycle.
+    const { error: walletErr } = await supabaseAdmin
+      .from('wallets')
+      .upsert({ wallet_address: app.applicant_address }, { onConflict: 'wallet_address', ignoreDuplicates: true });
+
+    if (walletErr) {
+      console.error('admin coop-applications wallet upsert error:', walletErr);
+      return NextResponse.json(
+        { error: 'Failed to register applicant wallet identity', details: walletErr.message },
+        { status: 500 }
+      );
+    }
+
     const { data: community, error: commErr } = await supabaseAdmin
       .from('communities')
       .insert([

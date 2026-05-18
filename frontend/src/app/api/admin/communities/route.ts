@@ -14,12 +14,25 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Name and treasury wallet address are required' }, { status: 400 });
         }
 
+        // communities.owner_address now FKs to wallets (phase4_wallets_identity) —
+        // ensure the nominated owner's wallet identity exists first.
+        if (owner_address) {
+            const { error: walletErr } = await supabaseAdmin
+                .from('wallets')
+                .upsert({ wallet_address: owner_address }, { onConflict: 'wallet_address', ignoreDuplicates: true });
+
+            if (walletErr) {
+                console.error('Supabase wallet upsert error:', walletErr);
+                return NextResponse.json({ error: 'Failed to register owner wallet identity', details: walletErr.message }, { status: 500 });
+            }
+        }
+
         const { data, error } = await supabaseAdmin
             .from('communities')
             .insert([
-                { 
-                    name, 
-                    treasury_wallet_address, 
+                {
+                    name,
+                    treasury_wallet_address,
                     treasury_balance: treasury_balance ? Number(treasury_balance) : 0 ,
                     initial_funds: treasury_balance ? Number(treasury_balance) : 0 ,
                     owner_address
