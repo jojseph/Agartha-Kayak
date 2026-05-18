@@ -425,6 +425,7 @@ export default function DashboardTestPage() {
 
   // Pending member requests
   const [pendingMembers, setPendingMembers] = useState<PendingMember[]>([]);
+  const [memberTab, setMemberTab] = useState<'pending' | 'rejected'>('pending');
 
   // Submitted treasury loan ID for success screen
   const [tLoanId, setTLoanId] = useState<string | null>(null);
@@ -700,6 +701,7 @@ export default function DashboardTestPage() {
   const openPendingMemberModal = async () => {
     if (!address) return;
     try {
+      setMemberTab('pending');
       const res = await fetch(`/api/members/pending?address=${address}`);
       if (res.ok) {
         const data = await res.json();
@@ -746,7 +748,11 @@ export default function DashboardTestPage() {
         body: JSON.stringify({ elderAddress: address, memberAddress, action })
       });
       if (res.ok) {
-        setPendingMembers(prev => prev.filter(m => m.wallet_address !== memberAddress));
+        if (action === 'approved') {
+          setPendingMembers(prev => prev.filter(m => m.wallet_address !== memberAddress));
+        } else {
+          setPendingMembers(prev => prev.map(m => m.wallet_address === memberAddress ? { ...m, status: 'rejected' } : m));
+        }
       } else {
         const err = await res.json();
         alert(err.error || 'Failed to update member.');
@@ -1818,45 +1824,88 @@ export default function DashboardTestPage() {
             </header>
 
             <div className="loan-modal__body" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
+              <div className="flex bg-gray-100 p-1 rounded-xl mb-6 select-none">
+                <button
+                  type="button"
+                  className={`flex-1 text-center py-2 text-sm font-semibold rounded-lg transition-all ${
+                    memberTab === 'pending'
+                      ? 'bg-white text-gray-900 shadow-sm border border-gray-200/40'
+                      : 'text-gray-500 hover:text-gray-900 border border-transparent'
+                  }`}
+                  onClick={() => setMemberTab('pending')}
+                >
+                  New Requests ({pendingMembers.filter((m: any) => (m.status || 'pending') === 'pending').length})
+                </button>
+                <button
+                  type="button"
+                  className={`flex-1 text-center py-2 text-sm font-semibold rounded-lg transition-all ${
+                    memberTab === 'rejected'
+                      ? 'bg-white text-gray-900 shadow-sm border border-gray-200/40'
+                      : 'text-gray-500 hover:text-gray-900 border border-transparent'
+                  }`}
+                  onClick={() => setMemberTab('rejected')}
+                >
+                  Declined ({pendingMembers.filter((m: any) => m.status === 'rejected').length})
+                </button>
+              </div>
+
               <div className="pending-list">
-                {pendingMembers.map((member: any) => (
-                  <div key={member.wallet_address} className="pending-card">
-                    <div className="pending-card__top">
-                      <div className="pending-card__requester">
-                        <div className="pending-card__avatar">{(member.alias || '??').slice(0, 2).toUpperCase()}</div>
-                        <div>
-                          <div className="pending-card__rname">{member.alias}</div>
-                          <div className="pending-card__rmeta">
-                            <span>{member.wallet_address.slice(0, 10)}...{member.wallet_address.slice(-6)}</span>
+                {pendingMembers
+                  .filter((m: any) => (m.status || 'pending') === memberTab)
+                  .map((member: any) => (
+                    <div key={member.wallet_address} className={`pending-card ${memberTab === 'rejected' ? 'is-rejected' : ''}`} style={{ marginBottom: '12px' }}>
+                      <div className="pending-card__top">
+                        <div className="pending-card__requester">
+                          <div className="pending-card__avatar">{(member.alias || '??').slice(0, 2).toUpperCase()}</div>
+                          <div>
+                            <div className="pending-card__rname">{member.alias}</div>
+                            <div className="pending-card__rmeta">
+                              <span>{member.wallet_address.slice(0, 10)}...{member.wallet_address.slice(-6)}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="pending-card__details">
-                      <div><span className="pending-card__detail-label">Email</span><span className="pending-card__detail-value">{member.email || 'N/A'}</span></div>
-                      <div><span className="pending-card__detail-label">Barangay</span><span className="pending-card__detail-value">{member.barangay || 'N/A'}</span></div>
-                      <div><span className="pending-card__detail-label">Gov ID #</span><span className="pending-card__detail-value" style={{ fontFamily: 'monospace' }}>{/* For future ID rendering */ 'Verified via Form'}</span></div>
-                      <div><span className="pending-card__detail-label">Date Joined</span><span className="pending-card__detail-value">{new Date(member.created_at).toLocaleDateString()}</span></div>
-                    </div>
+                      <div className="pending-card__details">
+                        <div><span className="pending-card__detail-label">Email</span><span className="pending-card__detail-value">{member.email || 'N/A'}</span></div>
+                        <div><span className="pending-card__detail-label">Barangay</span><span className="pending-card__detail-value">{member.barangay || 'N/A'}</span></div>
+                        <div><span className="pending-card__detail-label">Gov ID #</span><span className="pending-card__detail-value" style={{ fontFamily: 'monospace' }}>{'Verified via Form'}</span></div>
+                        <div><span className="pending-card__detail-label">Date Joined</span><span className="pending-card__detail-value">{new Date(member.created_at).toLocaleDateString()}</span></div>
+                      </div>
 
-                    <div className="pending-card__actions">
-                      <button className="btn-reject" onClick={() => respondToMember(member.wallet_address, 'rejected')}>
-                        <X size={14} strokeWidth={2.2} /> Reject
-                      </button>
-                      <button className="btn-approve" onClick={() => respondToMember(member.wallet_address, 'approved')}>
-                        <Check size={14} strokeWidth={2.2} /> Approve
-                      </button>
+                      {memberTab === 'pending' ? (
+                        <div className="pending-card__actions">
+                          <button className="btn-reject" onClick={() => respondToMember(member.wallet_address, 'rejected')}>
+                            <X size={14} strokeWidth={2.2} /> Reject
+                          </button>
+                          <button className="btn-approve" onClick={() => respondToMember(member.wallet_address, 'approved')}>
+                            <Check size={14} strokeWidth={2.2} /> Approve
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="pending-card__actions" style={{ gridTemplateColumns: '1fr' }}>
+                          <button className="btn-approve" onClick={() => respondToMember(member.wallet_address, 'approved')}>
+                            <Check size={14} strokeWidth={2.2} /> Approve Member
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  ))}
               </div>
 
-              {pendingMembers.length === 0 && (
+              {pendingMembers.filter((m: any) => (m.status || 'pending') === memberTab).length === 0 && (
                 <div className="elder-empty is-visible">
-                  <div className="elder-empty__icon"><Check size={22} strokeWidth={2.5} /></div>
-                  <div className="elder-empty__title">All Caught Up</div>
-                  <div className="elder-empty__sub">There are no pending registrations for your community right now.</div>
+                  <div className="elder-empty__icon">
+                    {memberTab === 'pending' ? <Check size={22} strokeWidth={2.5} /> : <X size={22} strokeWidth={2.5} />}
+                  </div>
+                  <div className="elder-empty__title">
+                    {memberTab === 'pending' ? 'All Caught Up' : 'No Declined Requests'}
+                  </div>
+                  <div className="elder-empty__sub">
+                    {memberTab === 'pending'
+                      ? 'There are no pending registrations for your community right now.'
+                      : 'There are no declined registrations in your community.'}
+                  </div>
                   <button className="elder-empty__close" onClick={() => setPendingMemberModalOpen(false)}>Close</button>
                 </div>
               )}

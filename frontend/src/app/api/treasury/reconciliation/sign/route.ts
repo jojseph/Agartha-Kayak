@@ -78,13 +78,18 @@ export async function POST(request: Request) {
         }
 
         // Check if enough approvals have been collected
-        const { count: approveCount } = await supabaseAdmin
+        const { data: approvedSigs, error: sigsFetchError } = await supabaseAdmin
             .from('reconciliation_signatures')
-            .select('*', { count: 'exact', head: true })
+            .select('elder_address')
             .eq('reconciliation_id', reconciliationId)
             .eq('decision', 'approve');
 
-        const approves = approveCount ?? 0;
+        if (sigsFetchError) {
+            console.error('Fetch signatures error:', sigsFetchError);
+            return NextResponse.json({ error: 'Failed to retrieve approval signatures' }, { status: 500 });
+        }
+
+        const approves = approvedSigs?.length ?? 0;
         let resolved = false;
 
         if (approves >= recon.sigs_required) {
@@ -122,13 +127,15 @@ export async function POST(request: Request) {
 
             resolved = true;
 
+            const approverAddresses = (approvedSigs || []).map((s: any) => s.elder_address).join(', ');
+
             // Enqueue the reconciliation receipt for on-chain etching
             await enqueueReceipt({
                 communityId: recon.community_id,
                 recordType: 'reconciliation_approved',
                 referenceId: reconciliationId,
                 memberAddress: recon.proposed_by,
-                summary: `Reconciliation \u2014 ${recon.reason} (\u20b1${Math.abs(recon.proposed_balance - recon.previous_balance).toLocaleString()} adjustment)`,
+                summary: `Reconciliation \u2014 ${recon.reason} (\u20b1${Math.abs(recon.proposed_balance - recon.previous_balance).toLocaleString()} adjustment). Approved by: ${approverAddresses}`,
                 estimatedBytes: 300,
             });
         }
