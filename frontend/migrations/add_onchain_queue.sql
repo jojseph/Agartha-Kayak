@@ -6,8 +6,11 @@ CREATE TABLE public.onchain_queue (
   community_id uuid NOT NULL,
   record_type text NOT NULL CHECK (record_type IN (
     'loan_approved', 'loan_rejected', 'vote_cast',
-    'repayment_confirmed', 'share_capital', 'reconciliation_approved',
-    'peer_loan_approved', 'peer_loan_settled'
+    'repayment_confirmed', 'share_capital',
+    'reconciliation_proposed', 'reconciliation_signature', 'reconciliation_approved', 'reconciliation_rejected',
+    'peer_loan_approved', 'peer_loan_rejected', 'peer_loan_settled',
+    'loan_defaulted', 'member_approved', 'member_rejected',
+    'gas_topup_proposed', 'gas_topup_approved', 'gas_topup_executed'
   )),
   reference_id uuid NOT NULL,
   member_address text NOT NULL,
