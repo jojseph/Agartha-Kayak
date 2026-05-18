@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { verifyWalletAuth } from '@/lib/auth';
+import { verifyAddressAuth } from '@/lib/auth';
 
 export async function POST(request: Request) {
-    const auth = await verifyWalletAuth(request);
+    const auth = await verifyAddressAuth(request);
     if (auth instanceof NextResponse) return auth;
 
     try {

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { verifyWalletAuth } from '@/lib/auth';
+import { verifyAddressAuth } from '@/lib/auth';
 
 // Reads must reflect a role change immediately (the console refetches after a
 // promote/demote), so never serve this from Next's data cache.
@@ -12,7 +12,7 @@ export const fetchCache = 'force-no-store';
  * (members + elders only; never the owner themselves or superusers).
  */
 export async function GET(request: Request) {
-  const auth = await verifyWalletAuth(request, { role: ['owner'] });
+  const auth = await verifyAddressAuth(request, { role: ['owner'] });
   if (auth instanceof NextResponse) return auth;
 
   if (!auth.communityId) {
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
  * the owner's own community. Cannot touch the owner or a superuser.
  */
 export async function PATCH(request: Request) {
-  const auth = await verifyWalletAuth(request, { role: ['owner'] });
+  const auth = await verifyAddressAuth(request, { role: ['owner'] });
   if (auth instanceof NextResponse) return auth;
 
   if (!auth.communityId) {

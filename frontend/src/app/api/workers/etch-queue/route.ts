@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { verifyWalletAuth } from '@/lib/auth';
+import { verifyAddressAuth } from '@/lib/auth';
 import { submitBatchForCommunity } from '@/lib/cardano/submitBatch';
 
 type WorkerRequestBody = {
@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     // Authorize via EITHER a superuser WalletSig (Module 1 contract:
     // returns AuthContext | NextResponse, never throws) OR the
     // server-to-server WORKER_TRIGGER_SECRET.
-    const auth = await verifyWalletAuth(request, { role: ['superuser'] });
+    const auth = await verifyAddressAuth(request, { role: ['superuser'] });
 
     let communityId: string | undefined;
     let authorizedViaSecret = false;

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { verifyWalletAuth } from '@/lib/auth';
+import { verifyAddressAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -9,7 +9,7 @@ export const fetchCache = 'force-no-store';
  * GET — SuperUser lists pending community requests.
  */
 export async function GET(request: Request) {
-  const auth = await verifyWalletAuth(request, { role: ['superuser'] });
+  const auth = await verifyAddressAuth(request, { role: ['superuser'] });
   if (auth instanceof NextResponse) return auth;
 
   try {
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
  * an `approve_coop_application` RPC is the robust follow-up if contention matters.
  */
 export async function PATCH(request: Request) {
-  const auth = await verifyWalletAuth(request, { role: ['superuser'] });
+  const auth = await verifyAddressAuth(request, { role: ['superuser'] });
   if (auth instanceof NextResponse) return auth;
 
   try {

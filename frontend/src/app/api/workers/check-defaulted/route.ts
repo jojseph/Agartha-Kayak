@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { verifyWalletAuth } from '@/lib/auth';
+import { verifyAddressAuth } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 const DEFAULT_GRACE_DAYS = 60;
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     // Server-to-server worker: authorize via EITHER a superuser WalletSig
     // (Module 1 contract: returns AuthContext | NextResponse, never throws)
     // OR the WORKER_TRIGGER_SECRET. Mirrors /api/workers/etch-queue.
-    const auth = await verifyWalletAuth(request, { role: ['superuser'] });
+    const auth = await verifyAddressAuth(request, { role: ['superuser'] });
     if (auth instanceof NextResponse) {
       const authHeader = request.headers.get('Authorization');
       if (

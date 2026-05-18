@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { verifyWalletAuth } from '@/lib/auth';
+import { verifyAddressAuth } from '@/lib/auth';
 import { enqueueReceipt } from '@/lib/enqueueReceipt';
 import { adjustTreasuryBalance } from '@/lib/balanceOps';
 
 export async function POST(request: Request) {
-    const auth = await verifyWalletAuth(request, { role: ['elder', 'owner'] });
+    const auth = await verifyAddressAuth(request, { role: ['elder', 'owner'] });
     if (auth instanceof NextResponse) return auth;
 
     try {

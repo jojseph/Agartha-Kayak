@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { verifyWalletAuth } from '@/lib/auth';
+import { verifyAddressAuth } from '@/lib/auth';
 import { enqueueReceipt } from '@/lib/enqueueReceipt';
 import { setTreasuryBalance } from '@/lib/balanceOps';
 
 // POST: An Elder signs (approves/rejects) a pending reconciliation
 export async function POST(request: Request) {
-    const auth = await verifyWalletAuth(request, { role: ['elder', 'owner'] });
+    const auth = await verifyAddressAuth(request, { role: ['elder', 'owner'] });
     if (auth instanceof NextResponse) return auth;
 
     try {
