@@ -50,6 +50,28 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Database error' }, { status: 500 });
         }
 
+        if (action === 'approved') {
+            await enqueueReceipt({
+                communityId: elderData.community_id,
+                recordType: 'member_approved',
+                referenceId: elderData.community_id,
+                memberAddress,
+                approvedBy: [elderAddress],
+                role: elderData.role,
+                action: 'approved',
+            });
+        } else {
+            await enqueueReceipt({
+                communityId: elderData.community_id,
+                recordType: 'member_rejected',
+                referenceId: elderData.community_id,
+                memberAddress,
+                rejectedBy: [elderAddress],
+                role: elderData.role,
+                action: 'rejected',
+            });
+        }
+
         // --- Share Capital Integration (only on approval) ---
         if (action === 'approved') {
             // Get the community's required share capital

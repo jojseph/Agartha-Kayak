@@ -56,36 +56,10 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'This is not a treasury loan' }, { status: 400 });
         }
 
-        if (loan.status !== 'pending') {
-            return NextResponse.json({ error: 'This loan is no longer pending' }, { status: 400 });
-        }
-
         // Ensure voter is in the same community as the borrower
         const borrowerCommunityId = (loan.borrower as any)?.community_id;
         if (borrowerCommunityId !== voter.community_id) {
             return NextResponse.json({ error: 'Voter is not in the same community as the borrower' }, { status: 403 });
-        }
-
-        // Check if voter already voted
-        const { data: existingVote } = await supabaseAdmin
-            .from('treasury_loan_votes')
-            .select('id, vote')
-            .eq('loan_id', loanId)
-            .eq('elder_address', elderAddress)
-            .single();
-
-        if (existingVote) {
-            return NextResponse.json({ error: 'You have already voted on this loan request' }, { status: 409 });
-        }
-
-        // Record the vote
-        const { error: insertError } = await supabaseAdmin
-            .from('treasury_loan_votes')
-            .insert([{ loan_id: loanId, elder_address: elderAddress, vote }]);
-
-        if (insertError) {
-            console.error('Insert vote error:', insertError);
-            return NextResponse.json({ error: 'Failed to record vote', detail: insertError.message }, { status: 500 });
         }
 
         // --- Majority Resolution Logic (>50% of Elders + Owner) ---
@@ -105,6 +79,122 @@ export async function POST(request: Request) {
 
         const totalEligible = totalVoters ?? 0;
         const majorityThreshold = Math.floor(totalEligible / 2) + 1; // >50%
+
+        const voteSummary = async () => {
+            const { count: approveCount, error: approveCountError } = await supabaseAdmin
+                .from('treasury_loan_votes')
+                .select('*', { count: 'exact', head: true })
+                .eq('loan_id', loanId)
+                .eq('vote', 'approve');
+
+            if (approveCountError) {
+                throw approveCountError;
+            }
+
+            const { count: rejectCount, error: rejectCountError } = await supabaseAdmin
+                .from('treasury_loan_votes')
+                .select('*', { count: 'exact', head: true })
+                .eq('loan_id', loanId)
+                .eq('vote', 'reject');
+
+            if (rejectCountError) {
+                throw rejectCountError;
+            }
+
+            return {
+                approves: approveCount ?? 0,
+                rejects: rejectCount ?? 0,
+            };
+        };
+
+        // Check if voter already voted. Matching repeat submissions are
+        // idempotent, which prevents double-clicks or stale UI from surfacing as
+        // noisy 409 conflicts.
+        const { data: existingVote, error: existingVoteError } = await supabaseAdmin
+            .from('treasury_loan_votes')
+            .select('id, vote')
+            .eq('loan_id', loanId)
+            .eq('elder_address', elderAddress)
+            .maybeSingle();
+
+        if (existingVoteError) {
+            console.error('Fetch existing vote error:', existingVoteError);
+            return NextResponse.json({ error: 'Failed to check existing vote' }, { status: 500 });
+        }
+
+        if (existingVote) {
+            const { approves, rejects } = await voteSummary();
+            if (existingVote.vote === vote) {
+                return NextResponse.json({
+                    success: true,
+                    vote,
+                    alreadyVoted: true,
+                    approved: loan.status === 'approved',
+                    rejected: loan.status === 'rejected',
+                    approveCount: approves,
+                    rejectCount: rejects,
+                    totalEligible,
+                    majorityThreshold,
+                });
+            }
+
+            return NextResponse.json({
+                error: `You have already ${existingVote.vote === 'approve' ? 'approved' : 'rejected'} this loan request`,
+                alreadyVoted: true,
+                existingVote: existingVote.vote,
+                approveCount: approves,
+                rejectCount: rejects,
+                totalEligible,
+                majorityThreshold,
+            }, { status: 409 });
+        }
+
+        if (loan.status !== 'pending') {
+            return NextResponse.json({ error: 'This loan is no longer pending' }, { status: 400 });
+        }
+
+        // Record the vote
+        const { error: insertError } = await supabaseAdmin
+            .from('treasury_loan_votes')
+            .insert([{ loan_id: loanId, elder_address: elderAddress, vote }]);
+
+        if (insertError) {
+            if (insertError.code === '23505') {
+                const { data: racedVote } = await supabaseAdmin
+                    .from('treasury_loan_votes')
+                    .select('vote')
+                    .eq('loan_id', loanId)
+                    .eq('elder_address', elderAddress)
+                    .maybeSingle();
+                const { approves, rejects } = await voteSummary();
+
+                if (racedVote?.vote === vote) {
+                    return NextResponse.json({
+                        success: true,
+                        vote,
+                        alreadyVoted: true,
+                        approved: loan.status === 'approved',
+                        rejected: loan.status === 'rejected',
+                        approveCount: approves,
+                        rejectCount: rejects,
+                        totalEligible,
+                        majorityThreshold,
+                    });
+                }
+
+                return NextResponse.json({
+                    error: 'You have already voted on this loan request',
+                    alreadyVoted: true,
+                    existingVote: racedVote?.vote,
+                    approveCount: approves,
+                    rejectCount: rejects,
+                    totalEligible,
+                    majorityThreshold,
+                }, { status: 409 });
+            }
+            console.error('Insert vote error:', insertError);
+            return NextResponse.json({ error: 'Failed to record vote', detail: insertError.message }, { status: 500 });
+        }
 
         // Count approve votes so far
         const { count: approveCount, error: approveCountError } = await supabaseAdmin
@@ -134,6 +224,17 @@ export async function POST(request: Request) {
         const rejects = rejectCount ?? 0;
         let approved = false;
         let rejected = false;
+
+        await enqueueReceipt({
+            communityId: voter.community_id,
+            recordType: 'vote_cast',
+            referenceId: loanId,
+            memberAddress: elderAddress,
+            role: voter.role,
+            action: vote,
+            approvedBy: vote === 'approve' ? [elderAddress] : undefined,
+            rejectedBy: vote === 'reject' ? [elderAddress] : undefined,
+        });
 
         // Check if majority approved
         if (approves >= majorityThreshold) {

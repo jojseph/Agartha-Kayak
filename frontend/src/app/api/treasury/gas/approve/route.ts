@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { verifyAddressAuth } from '@/lib/auth';
+import { enqueueReceipt } from '@/lib/enqueueReceipt';
 
 // POST: An Elder signs/approves a gas top-up proposal
 export async function POST(request: Request) {
@@ -29,6 +30,12 @@ export async function POST(request: Request) {
         if (proposal.status !== 'pending') {
             return NextResponse.json({ error: 'Proposal is no longer pending' }, { status: 400 });
         }
+
+        const { data: signer } = await supabaseAdmin
+            .from('members')
+            .select('role')
+            .eq('wallet_address', signerAddress)
+            .single();
 
         // Prevent self-signing if they are the proposer (optional, but standard for governance)
         // Wait, since we only need 1 elder, if the proposer is an elder, can they sign their own?
@@ -64,6 +71,24 @@ export async function POST(request: Request) {
                 .from('gas_topup_proposals')
                 .update({ status: 'approved' })
                 .eq('id', proposalId);
+
+            const { data: signatures } = await supabaseAdmin
+                .from('gas_topup_signatures')
+                .select('signer_address')
+                .eq('proposal_id', proposalId);
+
+            await enqueueReceipt({
+                communityId: proposal.community_id,
+                recordType: 'gas_topup_approved',
+                referenceId: proposal.community_id,
+                memberAddress: proposal.proposed_by,
+                amount: proposal.amount,
+                currency: 'ADA',
+                purpose: `Proposal ${proposalId}: ${proposal.reason}`,
+                approvedBy: (signatures || []).map((sig: any) => sig.signer_address),
+                role: signer?.role ?? 'elder',
+                action: 'approve',
+            });
         }
 
         return NextResponse.json({ 
