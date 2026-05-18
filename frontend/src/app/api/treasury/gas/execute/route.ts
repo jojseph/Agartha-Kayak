@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { verifyAddressAuth } from '@/lib/auth';
 import { fetchTxDetails } from '@/lib/cardano/txBuilder';
+import { enqueueReceipt } from '@/lib/enqueueReceipt';
 
 // POST: The Owner executes an approved gas top-up by submitting the txHash
 export async function POST(request: Request) {
@@ -67,6 +68,18 @@ export async function POST(request: Request) {
              console.error('Update gas balance error:', updateError);
              return NextResponse.json({ error: 'Failed to update community gas balance' }, { status: 500 });
         }
+
+        await enqueueReceipt({
+            communityId: proposal.community_id,
+            recordType: 'gas_topup_executed',
+            referenceId: proposal.community_id,
+            memberAddress: proposal.proposed_by,
+            amount: proposal.amount,
+            currency: 'ADA',
+            purpose: `Proposal ${proposalId}: ${proposal.reason} | tx: ${txHash}`,
+            role: 'owner',
+            action: 'execute',
+        });
 
         return NextResponse.json({ success: true, updatedBalance: updatedGas });
     } catch (err: any) {

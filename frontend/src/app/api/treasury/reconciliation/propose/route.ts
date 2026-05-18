@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { verifyAddressAuth } from '@/lib/auth';
+import { enqueueReceipt } from '@/lib/enqueueReceipt';
 
 // POST: An Elder proposes a manual treasury balance update
 export async function POST(request: Request) {
@@ -70,6 +71,18 @@ export async function POST(request: Request) {
             console.error('Insert reconciliation error:', insertError);
             return NextResponse.json({ error: 'Failed to create reconciliation proposal', detail: insertError.message }, { status: 500 });
         }
+
+        await enqueueReceipt({
+            communityId: elder.community_id,
+            recordType: 'reconciliation_proposed',
+            referenceId: reconciliation.reconciliation_id,
+            memberAddress: elderAddress,
+            amount: Math.abs(Number(proposedBalance) - Number(community.treasury_balance ?? 0)),
+            currency: 'PHP',
+            purpose: reason,
+            role: elder.role,
+            action: 'propose',
+        });
 
         return NextResponse.json({ success: true, reconciliation });
     } catch (err: any) {

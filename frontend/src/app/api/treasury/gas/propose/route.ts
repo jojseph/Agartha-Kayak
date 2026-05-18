@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { verifyAddressAuth } from '@/lib/auth';
+import { enqueueReceipt } from '@/lib/enqueueReceipt';
 
 // POST: An Elder or Owner proposes a gas top-up
 export async function POST(request: Request) {
@@ -44,6 +45,18 @@ export async function POST(request: Request) {
             console.error('Insert gas proposal error:', insertError);
             return NextResponse.json({ error: 'Failed to create gas proposal', detail: insertError.message }, { status: 500 });
         }
+
+        await enqueueReceipt({
+            communityId: member.community_id,
+            recordType: 'gas_topup_proposed',
+            referenceId: member.community_id,
+            memberAddress: proposerAddress,
+            amount,
+            currency: 'ADA',
+            purpose: `Proposal ${proposal.id}: ${reason}`,
+            role: member.role,
+            action: 'propose',
+        });
 
         return NextResponse.json({ success: true, proposal });
     } catch (err: any) {

@@ -55,8 +55,8 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Failed to update loan status' }, { status: 500 });
         }
 
-        // Enqueue receipt for on-chain etching (only on approval)
-        if (action === 'approved' && data) {
+        // Enqueue receipt for on-chain etching
+        if (data) {
             // Get the lender's community_id to know which community queue this belongs to
             const { data: lenderData } = await supabaseAdmin
                 .from('members')
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
             if (lenderData?.community_id) {
                 await enqueueReceipt({
                     communityId: lenderData.community_id,
-                    recordType: 'peer_loan_approved',
+                    recordType: action === 'approved' ? 'peer_loan_approved' : 'peer_loan_rejected',
                     referenceId: loanId,
                     memberAddress: fullLoan?.borrower_address ?? lenderAddress,
                     loanType: 'P2P',
@@ -84,9 +84,10 @@ export async function POST(request: Request) {
                     itemName: fullLoan?.mode === 'things' ? (fullLoan?.item_name ?? undefined) : undefined,
                     purpose: fullLoan?.purpose ?? data.purpose,
                     lenderAddress: lenderAddress,
-                    approvedBy: [lenderAddress],
+                    approvedBy: action === 'approved' ? [lenderAddress] : undefined,
+                    rejectedBy: action === 'rejected' ? [lenderAddress] : undefined,
                     role: 'lender',
-                    action: 'approve',
+                    action: action === 'approved' ? 'approve' : 'reject',
                 });
             }
         }

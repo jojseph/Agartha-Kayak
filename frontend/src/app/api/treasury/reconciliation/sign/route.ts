@@ -46,10 +46,6 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Reconciliation not found' }, { status: 404 });
         }
 
-        if (recon.status !== 'pending') {
-            return NextResponse.json({ error: 'This reconciliation is no longer pending' }, { status: 400 });
-        }
-
         // Proposer cannot sign their own proposal
         if (recon.proposed_by === elderAddress) {
             return NextResponse.json({ error: 'You cannot sign your own reconciliation proposal' }, { status: 403 });
@@ -58,6 +54,74 @@ export async function POST(request: Request) {
         // Verify elder is in the same community
         if (recon.community_id !== elder.community_id) {
             return NextResponse.json({ error: 'You are not in the same community as this reconciliation' }, { status: 403 });
+        }
+
+        const signatureSummary = async () => {
+            const { data: signatures, error: signaturesError } = await supabaseAdmin
+                .from('reconciliation_signatures')
+                .select('elder_address, decision')
+                .eq('reconciliation_id', reconciliationId);
+
+            if (signaturesError) {
+                throw signaturesError;
+            }
+
+            const approveCount = (signatures ?? []).filter((s: any) => s.decision === 'approve').length;
+            const rejectCount = (signatures ?? []).filter((s: any) => s.decision === 'reject').length;
+
+            return {
+                approveCount,
+                rejectCount,
+                signatures: signatures ?? [],
+            };
+        };
+
+        // Repeat clicks from the same wallet should be harmless. Treat the same
+        // decision as an idempotent success so the client can refresh its local UI
+        // instead of surfacing a 409 conflict.
+        const { data: existingSig, error: existingSigError } = await supabaseAdmin
+            .from('reconciliation_signatures')
+            .select('decision')
+            .eq('reconciliation_id', reconciliationId)
+            .eq('elder_address', elderAddress)
+            .maybeSingle();
+
+        if (existingSigError) {
+            console.error('Fetch existing signature error:', existingSigError);
+            return NextResponse.json({ error: 'Failed to check existing signature' }, { status: 500 });
+        }
+
+        if (existingSig) {
+            const summary = await signatureSummary();
+            if (existingSig.decision === decision) {
+                return NextResponse.json({
+                    success: true,
+                    decision,
+                    alreadySigned: true,
+                    resolved: recon.status !== 'pending',
+                    outcome: recon.status,
+                    approveCount: summary.approveCount,
+                    rejectCount: summary.rejectCount,
+                    sigsRequired: recon.sigs_required,
+                });
+            }
+
+            return NextResponse.json({
+                error: `You have already ${existingSig.decision === 'approve' ? 'approved' : 'rejected'} this reconciliation`,
+                alreadySigned: true,
+                existingDecision: existingSig.decision,
+                outcome: recon.status,
+                approveCount: summary.approveCount,
+                rejectCount: summary.rejectCount,
+                sigsRequired: recon.sigs_required,
+            }, { status: 409 });
+        }
+
+        if (recon.status !== 'pending') {
+            return NextResponse.json({
+                error: 'This reconciliation is no longer pending',
+                outcome: recon.status,
+            }, { status: 400 });
         }
 
         // Record the signature (unique constraint will prevent duplicates)
@@ -71,7 +135,36 @@ export async function POST(request: Request) {
 
         if (sigError) {
             if (sigError.code === '23505') { // unique violation
-                return NextResponse.json({ error: 'You have already signed this reconciliation' }, { status: 409 });
+                const { data: racedSig } = await supabaseAdmin
+                    .from('reconciliation_signatures')
+                    .select('decision')
+                    .eq('reconciliation_id', reconciliationId)
+                    .eq('elder_address', elderAddress)
+                    .maybeSingle();
+                const summary = await signatureSummary();
+
+                if (racedSig?.decision === decision) {
+                    return NextResponse.json({
+                        success: true,
+                        decision,
+                        alreadySigned: true,
+                        resolved: recon.status !== 'pending',
+                        outcome: recon.status,
+                        approveCount: summary.approveCount,
+                        rejectCount: summary.rejectCount,
+                        sigsRequired: recon.sigs_required,
+                    });
+                }
+
+                return NextResponse.json({
+                    error: 'You have already signed this reconciliation',
+                    alreadySigned: true,
+                    existingDecision: racedSig?.decision,
+                    outcome: recon.status,
+                    approveCount: summary.approveCount,
+                    rejectCount: summary.rejectCount,
+                    sigsRequired: recon.sigs_required,
+                }, { status: 409 });
             }
             console.error('Insert signature error:', sigError);
             return NextResponse.json({ error: 'Failed to record signature', detail: sigError.message }, { status: 500 });
@@ -91,6 +184,20 @@ export async function POST(request: Request) {
 
         const approves = approvedSigs?.length ?? 0;
         let resolved = false;
+
+        await enqueueReceipt({
+            communityId: recon.community_id,
+            recordType: 'reconciliation_signature',
+            referenceId: reconciliationId,
+            memberAddress: elderAddress,
+            amount: Math.abs(recon.proposed_balance - recon.previous_balance),
+            currency: 'PHP',
+            purpose: recon.reason,
+            role: elder.role,
+            action: decision,
+            approvedBy: decision === 'approve' ? [elderAddress] : undefined,
+            rejectedBy: decision === 'reject' ? [elderAddress] : undefined,
+        });
 
         if (approves >= recon.sigs_required) {
             // Update the reconciliation status
@@ -127,8 +234,6 @@ export async function POST(request: Request) {
 
             resolved = true;
 
-            const approverAddresses = (approvedSigs || []).map((s: any) => s.elder_address).join(', ');
-
             // Enqueue the reconciliation receipt for on-chain etching
             await enqueueReceipt({
                 communityId: recon.community_id,
@@ -156,6 +261,25 @@ export async function POST(request: Request) {
                 .from('treasury_reconciliations')
                 .update({ status: 'rejected', resolved_at: new Date().toISOString() })
                 .eq('reconciliation_id', reconciliationId);
+
+            const { data: rejectedSigs } = await supabaseAdmin
+                .from('reconciliation_signatures')
+                .select('elder_address')
+                .eq('reconciliation_id', reconciliationId)
+                .eq('decision', 'reject');
+
+            await enqueueReceipt({
+                communityId: recon.community_id,
+                recordType: 'reconciliation_rejected',
+                referenceId: reconciliationId,
+                memberAddress: recon.proposed_by,
+                amount: Math.abs(recon.proposed_balance - recon.previous_balance),
+                currency: 'PHP',
+                purpose: recon.reason,
+                rejectedBy: (rejectedSigs || []).map((s: any) => s.elder_address),
+                role: 'elder',
+                action: 'reject',
+            });
 
             return NextResponse.json({
                 success: true,
