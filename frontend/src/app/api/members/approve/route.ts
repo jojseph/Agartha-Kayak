@@ -81,10 +81,13 @@ export async function POST(request: Request) {
                     await enqueueReceipt({
                         communityId: community.community_id,
                         recordType: 'share_capital',
-                        referenceId: community.community_id, // no specific loan — use community as ref
+                        referenceId: community.community_id,
                         memberAddress: memberAddress,
-                        summary: `Share Capital \u20b1${Number(shareCapital).toLocaleString()} \u2014 New Member`,
-                        estimatedBytes: 180,
+                        amount: shareCapital,
+                        currency: 'PHP',
+                        approvedBy: [elderAddress],
+                        role: elderData.role,
+                        action: 'approved',
                     });
                 }
             }

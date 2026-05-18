@@ -64,18 +64,33 @@ export async function POST(request: Request) {
                 .eq('wallet_address', lenderAddress)
                 .single();
 
+            // Fetch full loan details for the rich on-chain receipt
+            const { data: fullLoan } = await supabaseAdmin
+                .from('loans')
+                .select('borrower_address, mode, amount, currency, item_name, purpose')
+                .eq('loan_id', loanId)
+                .single();
+
             if (lenderData?.community_id) {
-                const amount = data.amount ? `\u20b1${Number(data.amount).toLocaleString()}` : data.item_name || 'item';
                 await enqueueReceipt({
                     communityId: lenderData.community_id,
                     recordType: 'peer_loan_approved',
                     referenceId: loanId,
-                    memberAddress: lenderAddress,
-                    summary: `P2P Loan ${amount} \u2014 ${data.purpose || 'Peer lending'}`,
-                    estimatedBytes: 260,
+                    memberAddress: fullLoan?.borrower_address ?? lenderAddress,
+                    loanType: 'P2P',
+                    mode: fullLoan?.mode === 'things' ? 'T' : 'M',
+                    amount: fullLoan?.mode === 'things' ? 0 : (fullLoan?.amount ?? data.amount ?? 0),
+                    currency: fullLoan?.currency ?? 'PHP',
+                    itemName: fullLoan?.mode === 'things' ? (fullLoan?.item_name ?? undefined) : undefined,
+                    purpose: fullLoan?.purpose ?? data.purpose,
+                    lenderAddress: lenderAddress,
+                    approvedBy: [lenderAddress],
+                    role: 'lender',
+                    action: 'approve',
                 });
             }
         }
+
 
         return NextResponse.json({ success: true, loan: data });
     } catch (err: any) {

@@ -135,8 +135,12 @@ export async function POST(request: Request) {
                 recordType: 'reconciliation_approved',
                 referenceId: reconciliationId,
                 memberAddress: recon.proposed_by,
-                summary: `Reconciliation \u2014 ${recon.reason} (\u20b1${Math.abs(recon.proposed_balance - recon.previous_balance).toLocaleString()} adjustment). Approved by: ${approverAddresses}`,
-                estimatedBytes: 300,
+                amount: Math.abs(recon.proposed_balance - recon.previous_balance),
+                currency: 'PHP',
+                purpose: recon.reason,
+                approvedBy: (approvedSigs || []).map((s: any) => s.elder_address),
+                role: 'elder',
+                action: 'approve',
             });
         }
 
