@@ -12,7 +12,7 @@ export default function AgarthaLanding() {
 
   return (
     
-    <main className="relative min-h-screen w-full overflow-hidden isolate bg-black text-white font-sans">
+    <main className="relative h-screen w-full overflow-hidden isolate bg-black text-white font-sans">
       {/* Custom Animations injected via styled block for plug-and-play ease */}
       <style dangerouslySetInnerHTML={{
         __html: `
@@ -26,7 +26,7 @@ export default function AgarthaLanding() {
         }
       `}} />
 
-      <div>Current Status: {status}</div>
+
 
       {/* Background Video */}
       <video
@@ -62,7 +62,6 @@ export default function AgarthaLanding() {
             <div className="hidden md:flex items-center gap-8">
               {[
                 { name: 'How It Works', path: '/how-it-works' },
-                { name: 'Public Records', path: '/public-records' },
                 { name: 'FAQ', path: '/faq' }
               ].map((link) => (
                 <Link
@@ -97,11 +96,11 @@ export default function AgarthaLanding() {
         </nav>
 
         {/* Hero Content */}
-        <div className="flex flex-col items-center justify-center min-h-screen px-6 pt-[100px] pb-[280px] max-w-7xl mx-auto text-center">
+        <div className="flex flex-col items-center justify-center h-screen px-6 max-w-7xl mx-auto text-center pb-32">
 
           {/* Trust Badge */}
           <div
-            className="inline-flex items-center gap-2 mb-8 bg-white px-4 py-1.5 rounded-full border border-gray-200 animate-fade-in-up"
+            className="inline-flex items-center gap-2 mb-4 bg-white px-4 py-1.5 rounded-full border border-gray-200 animate-fade-in-up"
             style={{ animationDelay: '0.2s' }}
           >
             <Lock className="w-4 h-4 text-[#0A0A0A]" />
@@ -134,12 +133,12 @@ export default function AgarthaLanding() {
           {/* Primary CTA */}
           <button
             type="button"
-            // onClick={() => router.push('/pool')}
+            onClick={() => router.push(status === 'authenticated' ? '/dashboard' : '/walletAuthTest')}
             className="inline-flex items-center gap-2 bg-white text-black py-3.5 px-8 rounded-full text-base font-semibold hover:bg-gray-100 transition-colors animate-fade-in-up"
             style={{ animationDelay: '0.5s' }}
           >
             <LayoutDashboard className="w-5 h-5" />
-            View Transparency Dashboard
+            Get Started
           </button>
 
         </div>
