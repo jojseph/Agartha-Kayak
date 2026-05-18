@@ -6,7 +6,7 @@ import { useWallet } from '@meshsdk/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { resolveWalletAddress, walletAuthFetch } from '@/lib/walletAuthClient';
 
-export default function WalletAuthTestPage() {
+export default function WalletAuthPage() {
   const { connected, wallet, connect, disconnect } = useWallet();
   const router = useRouter();
   const searchParams = useSearchParams();

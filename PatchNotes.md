@@ -1,6 +1,6 @@
 # Current System Status
 
-- Wallet connection and registration flow are available via `/walletAuthTest`.
+- Wallet connection and registration flow are available via `/walletAuth`.
 - Wallet-signed auth helpers and nonce flow exist (see `frontend/src/lib/auth.ts`, `frontend/src/lib/walletAuthClient.ts`, and `/api/auth/nonce`).
 - The `/dashboard` route exists and serves the main role-aware dashboard UI.
 - Trust score has been removed from the member model and UI surfaces.
@@ -24,7 +24,7 @@
 - The authentication + registration flow is currently implemented as a test module.
 - To run:
   - `bun run dev`
-  - Navigate to: `http://localhost:3000/walletAuthTest`
+  - Navigate to: `http://localhost:3000/walletAuth`
 
 - Purpose:
   - Validate wallet connection

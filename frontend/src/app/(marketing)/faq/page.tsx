@@ -99,7 +99,7 @@ export default function FAQ() {
 
             {/* CTA Button */}
             <Link
-              href="/walletAuthTest"
+              href="/walletAuth"
               className="inline-flex items-center gap-2 bg-white text-[#0A0A0A] px-5 py-2.5 rounded-full border border-gray-200 text-sm font-medium hover:bg-gray-50 hover:border-gray-300 transition-all cursor-pointer"
             >
               <Wallet className="w-4 h-4" />

@@ -35,7 +35,7 @@ Contains the application's routes and global layouts.
 - **`Admin/`**: Platform admin dashboard (SuperUser surface; route group migration is pending).
 - **`dashboard/`**: Main role-aware dashboard UI.
 - **`pool/`**: Treasury pool views and queue UI.
-- **`walletAuthTest/`**: Wallet connection + registration flow (test surface).
+- **`walletAuth/`**: Wallet connection + registration flow.
 - **`layout.tsx`**: The root layout that wraps the entire application (HTML/Body tags).
 - **`globals.css`**: Main CSS file importing Tailwind and defining global styles.
 

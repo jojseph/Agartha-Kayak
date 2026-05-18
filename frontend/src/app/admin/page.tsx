@@ -27,7 +27,7 @@ export default function AdminPage() {
         }
 
         if (status === 'unauthenticated') {
-            router.push('/walletAuthTest?redirect=/admin');
+            router.push('/walletAuth?redirect=/admin');
             return;
         }
 
