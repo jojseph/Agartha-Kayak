@@ -2,21 +2,22 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { verifyAddressAuth } from '@/lib/auth';
 
-// POST: Scan all active/approved loans and flag overdue ones + apply penalty interest
-// This can be called on a schedule (cron) or triggered manually by an Elder/Owner
+// POST: Scan all active/approved treasury loans and flag overdue ones + apply penalty interest
+// Triggered manually by an Elder/Owner from their activity dashboard, or by a cron worker
 export async function POST(request: Request) {
-    const auth = await verifyAddressAuth(request, { role: ['superuser'] });
+    const auth = await verifyAddressAuth(request, { role: ['elder', 'owner', 'superuser'] });
     if (auth instanceof NextResponse) return auth;
 
     try {
         const now = new Date();
         const PENALTY_RATE = 0.02; // 2% penalty interest on overdue balance per month
 
-        // Find all loans that have a needed_by_date in the past and are still active/approved
+        // Find all treasury loans that have a needed_by_date in the past and are still active/approved
         const { data: loans, error: loanError } = await supabaseAdmin
             .from('loans')
             .select('loan_id, amount, interest_rate, needed_by_date, status, borrower_address, loan_type')
             .in('status', ['active', 'approved'])
+            .eq('loan_type', 'treasury')          // Only treasury loans use overdue/defaulted
             .not('needed_by_date', 'is', null)
             .lt('needed_by_date', now.toISOString().split('T')[0]); // past due
 
