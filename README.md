@@ -10,7 +10,7 @@ The platform never holds funds. It is an **immutable witness, not a custodial va
 
 **Working now (confirmed in code/docs)**
 - Wallet-signed auth helpers and nonce flow are implemented in [frontend/src/lib/auth.ts](frontend/src/lib/auth.ts), [frontend/src/lib/walletAuthClient.ts](frontend/src/lib/walletAuthClient.ts), and [frontend/src/app/api/auth/nonce/route.ts](frontend/src/app/api/auth/nonce/route.ts).
-- Auth/session scaffolding exists in [frontend/src/providers/AuthProvider.tsx](frontend/src/providers/AuthProvider.tsx) and [frontend/src/providers/index.tsx](frontend/src/providers/index.tsx), and the wallet registration flow is available at `/walletAuthTest`.
+- Auth/session scaffolding exists in [frontend/src/providers/AuthProvider.tsx](frontend/src/providers/AuthProvider.tsx) and [frontend/src/providers/index.tsx](frontend/src/providers/index.tsx), and the wallet registration flow is available at `/walletAuth`.
 - The main dashboard route exists at `/dashboard` (see [frontend/src/app/dashboard/page.tsx](frontend/src/app/dashboard/page.tsx)), alongside the marketing pages under `/(marketing)`.
 - Core API routes for members, loans, treasury, and community queue are under [frontend/src/app/api](frontend/src/app/api).
 
@@ -62,7 +62,7 @@ Agartha-Kayak/
 │   │   │   ├── admin/            # Platform admin dashboard
 │   │   │   ├── dashboard/        # Role-based dashboards (member/elder/owner)
 │   │   │   ├── pool/             # Treasury pool views
-│   │   │   ├── walletAuthTest/   # Wallet connect + registration flow
+│   │   │   ├── walletAuth/       # Wallet connect + registration flow
 │   │   │   ├── layout.tsx        # Root layout (Mesh provider, fonts)
 │   │   │   └── globals.css       # Global Tailwind + theme styles
 │   │   ├── components/           # UI, layout, pool, and wallet components
@@ -145,7 +145,7 @@ The app runs on **http://localhost:3000**.
 | Page | Path | Purpose |
 |---|---|---|
 | Landing | `/` | Marketing site |
-| Wallet auth test | `/walletAuthTest` | Connect Lace, register a new alias, simulate auth |
+| Wallet auth | `/walletAuth` | Connect Lace, register a new alias, authenticate |
 | Dashboard | `/dashboard` | Role-based dashboards (member / elder / owner) |
 | Pool | `/pool` | Treasury & on-chain queue views |
 | Admin | `/admin` | Platform administration (community creation, role management) |

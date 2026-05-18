@@ -14,7 +14,7 @@ Wallet Persistence & Session Ground-Truth: Sessions are tied directly to the liv
 
 On-Mount Dashboard Gating: The main workspace route (/dashboard) extracts the canonical bech32 address and immediately invokes /api/members. If the backend flags the member profile status as pending, a high-priority router.push('/pending-approval') intercept fires before the layout reveals active interface tools.
 
-Registration Flow Perimeter: Upon successful registration form submission inside walletAuthTest/page.tsx, users are immediately routed to /pending-approval rather than the active workspace, enforcing the perimeter by default.
+Registration Flow Perimeter: Upon successful registration form submission inside walletAuth/page.tsx, users are immediately routed to /pending-approval rather than the active workspace, enforcing the perimeter by default.
 
 Isolated Admin Space: Administrative tools are grouped cleanly under an independent route structure (/(superuser)/admin/*), leveraging distinct layout wrappers to prevent structural leakage into standard user dashboards.
 
