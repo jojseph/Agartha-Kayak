@@ -24,15 +24,32 @@ export const SIGNED_OUT_KEY = 'agartha-signed-out';
 export default function WalletSession() {
   const { connected, name, connect, disconnect } = useWallet();
 
-  // Cold load: restore the previous wallet unless the user signed out.
-  // Lace keeps the dApp authorized, so this reconnects without a popup.
+  // Cold load: restore the previous wallet only if it is already authorized.
+  // CIP-0030 isEnabled() returns true when the dApp still has permission,
+  // meaning connect() will be silent (no extension popup). If false, we
+  // clear the stale key so the user must reconnect manually.
   useEffect(() => {
     if (connected) return;
     if (localStorage.getItem(SIGNED_OUT_KEY) === '1') return;
     const prev = localStorage.getItem(PERSIST_KEY);
-    if (prev) {
-      connect(prev).catch(() => localStorage.removeItem(PERSIST_KEY));
+    if (!prev) return;
+
+    const api = (window as any).cardano?.[prev];
+    if (!api?.isEnabled) {
+      // Wallet extension not present — clear stale key silently.
+      localStorage.removeItem(PERSIST_KEY);
+      return;
     }
+
+    api.isEnabled().then((enabled: boolean) => {
+      if (enabled) {
+        connect(prev).catch(() => localStorage.removeItem(PERSIST_KEY));
+      } else {
+        // dApp auth was revoked in the extension — don't trigger a popup.
+        localStorage.removeItem(PERSIST_KEY);
+      }
+    }).catch(() => localStorage.removeItem(PERSIST_KEY));
+
     // run once on mount — connect()/connected are intentionally omitted
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
