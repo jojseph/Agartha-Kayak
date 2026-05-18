@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation';
 import { useWallet } from '@meshsdk/react';
 import { ShieldCheck, ChevronLeft } from 'lucide-react';
 import { resolveWalletAddress, walletAuthFetch } from '@/lib/walletAuthClient';
+import { useAuth } from '@/providers/AuthProvider';
 
 export default function AdminPage() {
     const router = useRouter();
-    const { wallet, connected } = useWallet();
+    const { wallet } = useWallet();
+    const { status, member } = useAuth();
     const [accessStatus, setAccessStatus] = useState<'checking' | 'allowed' | 'denied'>('checking');
 
     // Community Requests (coop applications) — the only purpose of this page.
@@ -17,39 +19,31 @@ export default function AdminPage() {
     const [applications, setApplications] = useState<any[]>([]);
     const [decisionLoading, setDecisionLoading] = useState<string | null>(null);
 
-    // SuperUser gate (Module 1 CP4 placeholder).
-    // TODO(M2): replace this client-side wallet probe with Ben's AuthProvider
-    // role check (Task 2.1) once the unified auth context lands. The real
-    // security barrier is the API layer (verifyWalletAuth + role: ['superuser']
-    // on every /api/admin/* route) — this is a UX-only redirect.
+    // SuperUser gate using unified auth context
     useEffect(() => {
-        async function verifySuperUser() {
-            if (!connected || !wallet) {
-                setAccessStatus('denied');
-                return;
-            }
-            try {
-                // Canonical bech32 address — same resolver every surface uses,
-                // so the member lookup matches what registration stored.
-                const address = await resolveWalletAddress(wallet);
-                const res = await fetch('/api/members', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ walletAddress: address }),
-                });
-                if (!res.ok) {
-                    setAccessStatus('denied');
-                    return;
-                }
-                const data = await res.json();
-                setAccessStatus(data.member?.role === 'superuser' ? 'allowed' : 'denied');
-            } catch (e) {
-                console.error('SuperUser role check failed:', e);
+        if (status === 'loading') {
+            setAccessStatus('checking');
+            return;
+        }
+
+        if (status === 'unauthenticated') {
+            router.push('/walletAuthTest?redirect=/admin');
+            return;
+        }
+
+        if (status === 'unregistered') {
+            setAccessStatus('denied');
+            return;
+        }
+
+        if (status === 'authenticated') {
+            if (member?.role === 'superuser') {
+                setAccessStatus('allowed');
+            } else {
                 setAccessStatus('denied');
             }
         }
-        verifySuperUser();
-    }, [connected, wallet]);
+    }, [status, member, router]);
 
     useEffect(() => {
         if (accessStatus !== 'allowed') return;
@@ -65,9 +59,13 @@ export default function AdminPage() {
             if (res.ok) {
                 const data = await res.json();
                 setApplications(data.applications || []);
+            } else {
+                console.error('Unauthorized admin access attempt detected:', res.status);
+                setAccessStatus('denied');
             }
         } catch (error) {
             console.error('Failed to fetch community requests', error);
+            setAccessStatus('denied');
         }
     };
 
