@@ -53,7 +53,7 @@ export async function GET(request: Request) {
             if (memberAddresses.length > 0) {
                 const { data: loans } = await supabaseAdmin
                     .from('loans')
-                    .select('loan_id')
+                    .select('loan_id, borrower_address')
                     .eq('loan_type', 'treasury')
                     .eq('status', 'pending')
                     .in('borrower_address', memberAddresses);
@@ -67,7 +67,7 @@ export async function GET(request: Request) {
                         .in('loan_id', loanIds);
                     
                     const votedLoanIds = new Set((myVotes || []).map((v: any) => v.loan_id));
-                    counts.treasuryLoans = loans.filter((l: any) => !votedLoanIds.has(l.loan_id)).length;
+                    counts.treasuryLoans = loans.filter((l: any) => !votedLoanIds.has(l.loan_id) && l.borrower_address !== address).length;
                 }
             }
 
@@ -81,10 +81,10 @@ export async function GET(request: Request) {
             counts.newMembers = nmCount ?? 0;
 
             // Pending Reconciliations in community
-            // We only count those the user HAS NOT signed yet
+            // We only count those the user HAS NOT signed yet, and wasn't proposed by them
             const { data: reconciliations } = await supabaseAdmin
                 .from('treasury_reconciliations')
-                .select('reconciliation_id')
+                .select('reconciliation_id, proposed_by')
                 .eq('community_id', communityId)
                 .eq('status', 'pending');
             
@@ -97,7 +97,7 @@ export async function GET(request: Request) {
                     .in('reconciliation_id', reconIds);
                 
                 const signedReconIds = new Set((mySigs || []).map((s: any) => s.reconciliation_id));
-                counts.reconciliations = reconciliations.filter((r: any) => !signedReconIds.has(r.reconciliation_id)).length;
+                counts.reconciliations = reconciliations.filter((r: any) => !signedReconIds.has(r.reconciliation_id) && r.proposed_by !== address).length;
             }
         }
 

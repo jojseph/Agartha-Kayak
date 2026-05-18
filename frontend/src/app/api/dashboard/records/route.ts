@@ -22,7 +22,7 @@ export async function GET(request: Request) {
 
         const formatted = data.map((loan: any) => {
             let fromName = '';
-            let toName = loan.borrower?.alias || 'Unknown Borrower';
+            const toName = loan.borrower?.alias || 'Unknown Borrower';
             
             if (loan.loan_type === 'treasury') {
                 fromName = 'Cooperative Treasury';

@@ -25,12 +25,12 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Forbidden. Only elders and owners can view pending members.' }, { status: 403 });
         }
 
-        // Fetch pending members for that community
+        // Fetch pending and rejected members for that community
         const { data: pendingMembers, error: pendingError } = await supabaseAdmin
             .from('members')
             .select('*')
             .eq('community_id', elderData.community_id)
-            .eq('status', 'pending')
+            .in('status', ['pending', 'rejected'])
             .order('created_at', { ascending: false });
 
         if (pendingError) {
