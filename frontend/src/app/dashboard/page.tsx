@@ -284,13 +284,9 @@ export default function DashboardTestPage() {
   const [ownerMembers, setOwnerMembers] = useState<{ wallet_address: string; alias: string; role: string }[]>([]);
   const [ownerTarget, setOwnerTarget] = useState('');
   const [ownerRoleBusy, setOwnerRoleBusy] = useState(false);
-  const [rowVisibility, setRowVisibility] = useState<Record<string, boolean>>({
-    'tx1q8w': true,
-    'tx1m5k': false,
-    'tx1f9j': true,
-    'tx1d2x': false,
-    'tx1c8h': true,
-  });
+  const [rowVisibility, setRowVisibility] = useState<Record<string, boolean>>({});
+  const [dashboardRecords, setDashboardRecords] = useState<any[]>([]);
+  const [recordsLoading, setRecordsLoading] = useState(true);
 
   const toggleRowVisibility = async (txKey: string) => {
     // 1. Save the previous state in case we need to roll back
@@ -300,11 +296,11 @@ export default function DashboardTestPage() {
     setRowVisibility(prev => ({ ...prev, [txKey]: !previousState }));
 
     try {
-      // 3. Dispatch secure signature-gated PATCH call to Raymond's backend
-      const res = await walletAuthFetch(wallet, '/api/loans/visibility', {
+      // 3. Dispatch secure signature-gated PATCH call
+      const res = await walletAuthFetch(wallet, '/api/transactions/visibility', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ txHash: txKey, isPublic: !previousState, actorAddress: address })
+        body: JSON.stringify({ targetType: 'loan', targetId: txKey, isPublic: !previousState })
       });
 
       if (!res.ok) {
@@ -539,6 +535,26 @@ export default function DashboardTestPage() {
           if (d.counts) setPendingCounts(d.counts);
         })
         .catch(console.error);
+    }
+  }, [address]);
+
+  // Fetch dashboard records
+  useEffect(() => {
+    if (address) {
+      fetch(`/api/dashboard/records?address=${address}`)
+        .then(r => r.json())
+        .then(d => {
+          if (d.records) {
+            setDashboardRecords(d.records);
+            const visibilityMap: Record<string, boolean> = {};
+            d.records.forEach((r: any) => {
+              visibilityMap[r.id] = r.isPublic;
+            });
+            setRowVisibility(visibilityMap);
+          }
+        })
+        .catch(console.error)
+        .finally(() => setRecordsLoading(false));
     }
   }, [address]);
 
@@ -1026,136 +1042,59 @@ export default function DashboardTestPage() {
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td className="cell-date">Today, 2:14 PM</td>
-                  <td><span className="type-badge type-badge--treasury"><Landmark size={11} /> Treasury</span></td>
-                  <td className="cell-borrower">Joselito Mendoza</td>
-                  <td className="cell-amount">₱ 8,500.00</td>
-                  <td className="cell-receipt">
-                    <button className="receipt-link" onClick={() => setTxModal({ isOpen: true, txKey: 'tx1q8w' })}>
-                      tx1q8w…rfg9 <ChevronRight size={11} />
-                    </button>
-                  </td>
-                  
-                  {(memberData?.role === 'elder' || memberData?.role === 'owner') && (
-                    <td style={{ textAlign: 'center' }}>
-                      <button 
-                        onClick={() => toggleRowVisibility('tx1q8w')}
-                        className={`text-xs font-semibold px-2.5 py-1 rounded-md transition-all ${
-                          rowVisibility['tx1q8w'] 
-                            ? 'bg-green-50 border border-green-200 text-green-700' 
-                            : 'bg-gray-100 border border-gray-200 text-gray-400'
-                        }`}
-                      >
-                        {rowVisibility['tx1q8w'] ? 'Public' : 'Private'}
-                      </button>
+                {recordsLoading ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '3rem 0' }}>
+                      <Activity className="animate-spin" style={{ color: 'var(--text-3)', margin: '0 auto' }} size={24} />
                     </td>
-                  )}
-                </tr>
-                <tr>
-                  <td className="cell-date">Today, 11:02 AM</td>
-                  <td><span className="type-badge type-badge--member"><Users size={11} /> Member</span></td>
-                  <td className="cell-borrower">
-                    <span className="cell-borrower-flow">Cristina Bautista <ArrowRight size={12} /> Aldous Domingo</span>
-                  </td>
-                  <td className="cell-amount">₱ 3,200.00</td>
-                  <td className="cell-receipt">
-                    <button className="receipt-link" onClick={() => setTxModal({ isOpen: true, txKey: 'tx1m5k' })}>
-                      tx1m5k…xz4t <ChevronRight size={11} />
-                    </button>
-                  </td>
-                  {(memberData?.role === 'elder' || memberData?.role === 'owner') && (
-                    <td style={{ textAlign: 'center' }}>
-                      <button 
-                        onClick={() => toggleRowVisibility('tx1m5k')}
-                        className={`text-xs font-semibold px-2.5 py-1 rounded-md transition-all ${
-                          rowVisibility['tx1m5k'] 
-                            ? 'bg-green-50 border border-green-200 text-green-700' 
-                            : 'bg-gray-100 border border-gray-200 text-gray-400'
-                        }`}
-                      >
-                        {rowVisibility['tx1m5k'] ? 'Public' : 'Private'}
-                      </button>
+                  </tr>
+                ) : dashboardRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--text-3)' }}>
+                      No public records found.
                     </td>
-                  )}
-                </tr>
-                <tr>
-                  <td className="cell-date">Yesterday</td>
-                  <td><span className="type-badge type-badge--treasury"><Landmark size={11} /> Treasury</span></td>
-                  <td className="cell-borrower">Aurelio Salazar</td>
-                  <td className="cell-amount">₱ 12,000.00</td>
-                  <td className="cell-receipt">
-                    <button className="receipt-link" onClick={() => setTxModal({ isOpen: true, txKey: 'tx1f9j' })}>
-                      tx1f9j…kqp7 <ChevronRight size={11} />
-                    </button>
-                  </td>
-                  {(memberData?.role === 'elder' || memberData?.role === 'owner') && (
-                    <td style={{ textAlign: 'center' }}>
-                      <button 
-                        onClick={() => toggleRowVisibility('tx1f9j')}
-                        className={`text-xs font-semibold px-2.5 py-1 rounded-md transition-all ${
-                          rowVisibility['tx1f9j'] 
-                            ? 'bg-green-50 border border-green-200 text-green-700' 
-                            : 'bg-gray-100 border border-gray-200 text-gray-400'
-                        }`}
-                      >
-                        {rowVisibility['tx1f9j'] ? 'Public' : 'Private'}
-                      </button>
-                    </td>
-                  )}
-                </tr>
-                <tr>
-                  <td className="cell-date">2 days ago</td>
-                  <td><span className="type-badge type-badge--member"><Users size={11} /> Member</span></td>
-                  <td className="cell-borrower">
-                    <span className="cell-borrower-flow">Lorna Pascual <ArrowRight size={12} /> Benigno Ocampo</span>
-                  </td>
-                  <td className="cell-amount">₱ 2,500.00</td>
-                  <td className="cell-receipt">
-                    <button className="receipt-link" onClick={() => setTxModal({ isOpen: true, txKey: 'tx1d2x' })}>
-                      tx1d2x…nvw3 <ChevronRight size={11} />
-                    </button>
-                  </td>
-                  {(memberData?.role === 'elder' || memberData?.role === 'owner') && (
-                    <td style={{ textAlign: 'center' }}>
-                      <button 
-                        onClick={() => toggleRowVisibility('tx1d2x')}
-                        className={`text-xs font-semibold px-2.5 py-1 rounded-md transition-all ${
-                          rowVisibility['tx1d2x'] 
-                            ? 'bg-green-50 border border-green-200 text-green-700' 
-                            : 'bg-gray-100 border border-gray-200 text-gray-400'
-                        }`}
-                      >
-                        {rowVisibility['tx1d2x'] ? 'Public' : 'Private'}
-                      </button>
-                    </td>
-                  )}
-                </tr>
-                <tr>
-                  <td className="cell-date">3 days ago</td>
-                  <td><span className="type-badge type-badge--treasury"><Landmark size={11} /> Treasury</span></td>
-                  <td className="cell-borrower">Estrella Villanueva</td>
-                  <td className="cell-amount">₱ 15,000.00</td>
-                  <td className="cell-receipt">
-                    <button className="receipt-link" onClick={() => setTxModal({ isOpen: true, txKey: 'tx1c8h' })}>
-                      tx1c8h…rmb5 <ChevronRight size={11} />
-                    </button>
-                  </td>
-                  {(memberData?.role === 'elder' || memberData?.role === 'owner') && (
-                    <td style={{ textAlign: 'center' }}>
-                      <button 
-                        onClick={() => toggleRowVisibility('tx1c8h')}
-                        className={`text-xs font-semibold px-2.5 py-1 rounded-md transition-all ${
-                          rowVisibility['tx1c8h'] 
-                            ? 'bg-green-50 border border-green-200 text-green-700' 
-                            : 'bg-gray-100 border border-gray-200 text-gray-400'
-                        }`}
-                      >
-                        {rowVisibility['tx1c8h'] ? 'Public' : 'Private'}
-                      </button>
-                    </td>
-                  )}
-                </tr>
+                  </tr>
+                ) : (
+                  dashboardRecords.map(record => (
+                    <tr key={record.id}>
+                      <td className="cell-date">
+                        {record.shortDate}
+                      </td>
+                      <td>
+                        <span className={`type-badge type-badge--${record.type}`}>
+                          {record.type === 'treasury' ? <Landmark size={11} /> : <Users size={11} />} {record.type.charAt(0).toUpperCase() + record.type.slice(1)}
+                        </span>
+                      </td>
+                      <td className="cell-borrower">
+                        {record.type === 'treasury' ? (
+                          record.toName
+                        ) : (
+                          <span className="cell-borrower-flow">{record.fromName} <ArrowRight size={12} /> {record.toName}</span>
+                        )}
+                      </td>
+                      <td className="cell-amount">₱ {record.amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td className="cell-receipt">
+                        <button className="receipt-link" onClick={() => setTxModal({ isOpen: true, txKey: record.id })}>
+                          {record.displayHash} <ChevronRight size={11} />
+                        </button>
+                      </td>
+                      {(memberData?.role === 'elder' || memberData?.role === 'owner') && (
+                        <td style={{ textAlign: 'center' }}>
+                          <button 
+                            onClick={() => toggleRowVisibility(record.id)}
+                            className={`text-xs font-semibold px-2.5 py-1 rounded-md transition-all ${
+                              rowVisibility[record.id] 
+                                ? 'bg-green-50 border border-green-200 text-green-700' 
+                                : 'bg-gray-100 border border-gray-200 text-gray-400'
+                            }`}
+                          >
+                            {rowVisibility[record.id] ? 'Public' : 'Private'}
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -1928,7 +1867,24 @@ export default function DashboardTestPage() {
 
       {/* --- TRANSACTION RECEIPT MODAL --- */}
       {txModal.isOpen && txModal.txKey && (() => {
-        const tx = TX_DATA[txModal.txKey];
+        const txRecord = dashboardRecords.find(r => r.id === txModal.txKey);
+        if (!txRecord) return null;
+        
+        const tx = {
+            fullHash: txRecord.fullHash,
+            type: txRecord.type,
+            purpose: txRecord.purpose,
+            amount: txRecord.amount,
+            from: { name: txRecord.fromName, meta: '', kind: txRecord.type === 'treasury' ? 'treasury' : 'person', addr: '' },
+            to: { name: txRecord.toName, meta: '', kind: 'person', addr: '' },
+            timestamp: txRecord.timestampStr,
+            block: 'Pending',
+            slot: 'Pending',
+            feeAda: 0,
+            feePhp: 0,
+            confirmations: 0,
+            confirmsTotal: 30
+        };
         const isFinalized = tx.confirmations >= tx.confirmsTotal;
 
         const handleCopy = () => {
