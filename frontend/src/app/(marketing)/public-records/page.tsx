@@ -1,30 +1,44 @@
 'use client';
 
-import React from 'react';
-import { Landmark, Users, Eye, ShieldCheck, ExternalLink, Activity } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Landmark, Users, Eye, ShieldCheck, Activity } from 'lucide-react';
+
+interface PublicRecord {
+  id: string;
+  type: string;
+  coop: string;
+  purpose: string;
+  amount: number;
+  timestamp: string;
+  hash: string;
+  status: string;
+}
 
 export default function PublicRecordBoardPage() {
-  // Mock data representing public-flagged logs to simulate live integration
-  const mockPublicRecords = [
-    {
-      id: 'tx_p1',
-      type: 'treasury',
-      coop: 'Mandaue Central Farmers COOP',
-      purpose: 'Emergency Crop Rehabilitation',
-      amount: 25000,
-      timestamp: 'May 17, 2026 · 14:32 UTC+8',
-      hash: 'addr1q9k4xv2nptr8...m4w5kqz3vt7s'
-    },
-    {
-      id: 'tx_p2',
-      type: 'member',
-      coop: 'Pardo Livelihood Association',
-      purpose: 'Sari-Sari Store Inventory Purchase',
-      amount: 5000,
-      timestamp: 'May 15, 2026 · 09:14 UTC+8',
-      hash: 'addr1q4f7tn2pn8j...8m9k2zlfkm8t'
+  const [records, setRecords] = useState<PublicRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchRecords() {
+      try {
+        const response = await fetch('/api/public-records');
+        if (!response.ok) throw new Error('Failed to fetch records');
+        const data = await response.json();
+        setRecords(data.records);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
     }
-  ];
+
+    fetchRecords();
+    
+    // Optional: Refresh every 30 seconds for a "live feed" feel
+    const intervalId = setInterval(fetchRecords, 30000);
+    return () => clearInterval(intervalId);
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-[#0A0A0A] font-sans selection:bg-gray-200">
@@ -52,10 +66,10 @@ export default function PublicRecordBoardPage() {
           </div>
 
           {/* Raymond Integration Sync Banner */}
-          <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs max-w-xs md:max-w-none">
-            <Activity size={16} className="text-amber-600 animate-pulse flex-shrink-0" />
+          <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs max-w-xs md:max-w-none">
+            <Activity size={16} className="text-emerald-600 animate-pulse flex-shrink-0" />
             <div>
-              <span className="font-bold">Sync Advisory:</span> Live stream gating is awaiting backend schema optimizations. Discharging immutable staging preview.
+              <span className="font-bold">Sync Active:</span> Live stream of network transactions and loan records synchronized from the on-chain queue.
             </div>
           </div>
         </header>
@@ -63,14 +77,22 @@ export default function PublicRecordBoardPage() {
         {/* Live Feed Container */}
         <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">Immature Verification Stream</h2>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">Live Verification Stream</h2>
             <span className="text-[11px] font-medium text-gray-400 flex items-center gap-1">
               <ShieldCheck size={12} className="text-green-500" /> Powered by Cardano Meta-Etch
             </span>
           </div>
 
           <div className="divide-y divide-gray-100">
-            {mockPublicRecords.map((record) => (
+            {loading ? (
+              <div className="p-12 flex justify-center">
+                <Activity className="animate-spin text-gray-300" size={24} />
+              </div>
+            ) : error ? (
+              <div className="p-8 text-center text-red-500 text-sm">{error}</div>
+            ) : records.length === 0 ? (
+              <div className="p-8 text-center text-gray-400 text-sm">No public records found.</div>
+            ) : records.map((record) => (
               <div key={record.id} className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-gray-50/40 transition-colors">
                 <div className="space-y-2 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
