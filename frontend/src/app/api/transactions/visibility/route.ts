@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { verifyWalletAuth } from '@/lib/auth';
+import { verifyAddressAuth } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 type Body = {
@@ -14,7 +14,7 @@ export async function PATCH(request: Request) {
   try {
     // Module 1 contract: verifyWalletAuth returns AuthContext | NextResponse
     // and NEVER throws — check the union, don't try/catch for auth.
-    const auth = await verifyWalletAuth(request, { role: ['elder', 'owner'] });
+    const auth = await verifyAddressAuth(request, { role: ['elder', 'owner'] });
     if (auth instanceof NextResponse) return auth;
 
     const body = (await request.json()) as Body;

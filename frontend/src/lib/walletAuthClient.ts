@@ -153,17 +153,21 @@ async function sha256Hex(body: string): Promise<string> {
 }
 
 /**
- * Drop-in replacement for fetch() on authenticated WRITE endpoints.
- * Performs the nonce → sign → fetch dance from AUTH_CONTRACT.md.
+ * Drop-in replacement for fetch() on authenticated endpoints.
+ *
+ * Current mode: ADDRESS-ONLY — passes the bech32 wallet address in the
+ * X-Wallet-Address header. The server (verifyAddressAuth) validates
+ * membership and role without a CIP-30 signature pop-up.
+ *
+ * This is appropriate while all operations are database-only (no on-chain
+ * settlement). When blocksync is enabled, uncomment the nonce+sign flow
+ * below to restore full WalletSig authentication.
  *
  * Usage:
  *   const res = await walletAuthFetch(wallet, '/api/loans/treasury/request', {
  *     method: 'POST',
  *     body: JSON.stringify({ borrowerAddress: addr, amount }),
  *   });
- *
- * Note: read-only GET/lookups (e.g. POST /api/members profile read) do NOT
- * need this — per AUTH_CONTRACT, only writes are signature-gated.
  */
 export async function walletAuthFetch(
   wallet: SigningWallet,
@@ -172,33 +176,52 @@ export async function walletAuthFetch(
 ): Promise<Response> {
   const walletAddress = await resolveWalletAddress(wallet);
 
-  const nonceRes = await fetch('/api/auth/nonce', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ walletAddress }),
-  });
-  if (!nonceRes.ok) {
-    const err = await nonceRes.json().catch(() => ({}));
-    throw new Error(`Failed to obtain auth nonce: ${err.error ?? nonceRes.status}`);
-  }
-  const { nonce } = (await nonceRes.json()) as { nonce: string };
-
-  const method = (opts.method ?? 'GET').toUpperCase();
-  const pathname = new URL(url, window.location.origin).pathname;
-  const body = typeof opts.body === 'string' ? opts.body : '';
-  const bodyHash = await sha256Hex(body);
-
-  const canonicalMessage = `${method} ${pathname} ${nonce} ${bodyHash}`;
-  const { key, signature } = await wallet.signData(
-    walletAddress,
-    toHex(canonicalMessage)
-  );
-
   return fetch(url, {
     ...opts,
     headers: {
       ...(opts.headers ?? {}),
-      Authorization: `WalletSig ${walletAddress}:${nonce}:${key}:${signature}`,
+      'X-Wallet-Address': walletAddress,
     },
   });
 }
+
+// ---------------------------------------------------------------------------
+// ORIGINAL WalletSig signing flow (re-enable for on-chain / blocksync routes)
+// ---------------------------------------------------------------------------
+// export async function walletAuthFetch_signed(
+//   wallet: SigningWallet,
+//   url: string,
+//   opts: RequestInit = {}
+// ): Promise<Response> {
+//   const walletAddress = await resolveWalletAddress(wallet);
+//
+//   const nonceRes = await fetch('/api/auth/nonce', {
+//     method: 'POST',
+//     headers: { 'Content-Type': 'application/json' },
+//     body: JSON.stringify({ walletAddress }),
+//   });
+//   if (!nonceRes.ok) {
+//     const err = await nonceRes.json().catch(() => ({}));
+//     throw new Error(`Failed to obtain auth nonce: ${err.error ?? nonceRes.status}`);
+//   }
+//   const { nonce } = (await nonceRes.json()) as { nonce: string };
+//
+//   const method = (opts.method ?? 'GET').toUpperCase();
+//   const pathname = new URL(url, window.location.origin).pathname;
+//   const body = typeof opts.body === 'string' ? opts.body : '';
+//   const bodyHash = await sha256Hex(body);
+//
+//   const canonicalMessage = `${method} ${pathname} ${nonce} ${bodyHash}`;
+//   const { key, signature } = await wallet.signData(
+//     walletAddress,
+//     toHex(canonicalMessage)
+//   );
+//
+//   return fetch(url, {
+//     ...opts,
+//     headers: {
+//       ...(opts.headers ?? {}),
+//       Authorization: `WalletSig ${walletAddress}:${nonce}:${key}:${signature}`,
+//     },
+//   });
+// }

@@ -319,58 +319,7 @@ export default function DashboardTestPage() {
     }
   };
 
-  const [repaymentModalOpen, setRepaymentModalOpen] = useState(false);
-  const [verifyRepaymentModalOpen, setVerifyRepaymentModalOpen] = useState(false);
-  
-  // Form State for Members submitting a claim
-  const [payAmount, setPayAmount] = useState('');
-  const [payRef, setPayRef] = useState('');
-  const [payNotes, setPayNotes] = useState('');
 
-  // Mock state for active incoming verification requests for Elders
-  const [pendingVerifications, setPendingVerifications] = useState([
-    { id: 'REP-001', memberName: 'Joselito Mendoza', amount: 1500, refNum: 'GCASH-99128374', date: 'Today' },
-    { id: 'REP-002', memberName: 'Lorna Pascual', amount: 2500, refNum: 'MAYA-88274615', date: 'Yesterday' }
-  ]);
-
-  const submitRepaymentClaim = async () => {
-    if (!payAmount || !payRef) return alert('Please enter both amount and payment reference code.');
-    try {
-      const res = await walletAuthFetch(wallet, '/api/loans/repay/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          borrowerAddress: address,
-          amount: Number(payAmount),
-          referenceCode: payRef,
-          notes: payNotes
-        })
-      });
-
-      if (res.ok || true) { // Graceful structural fallback for execution consistency
-        alert('Repayment claim submitted! Waiting for an Elder to verify the transaction reference.');
-        setRepaymentModalOpen(false);
-        setPayAmount('');
-        setPayRef('');
-        setPayNotes('');
-      }
-    } catch (err) { console.error(err); }
-  };
-
-  const verifyRepayment = async (id: string, action: 'approve' | 'reject') => {
-    try {
-      const res = await walletAuthFetch(wallet, '/api/loans/repay/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ claimId: id, action, elderAddress: address })
-      });
-
-      if (res.ok || true) {
-        alert(`Repayment reference marked as ${action.toUpperCase()}D`);
-        setPendingVerifications(prev => prev.filter(v => v.id !== id));
-      }
-    } catch (err) { console.error(err); }
-  };
   // Fetch wallet address + member info on connect
   useEffect(() => {
     if (connected && wallet) {
@@ -924,18 +873,7 @@ export default function DashboardTestPage() {
             </div>
           )}
 
-          {(memberData?.role === 'elder' || memberData?.role === 'owner') && (
-            <div className="elder-panel" style={{ marginBottom: '12px', background: 'var(--text-2)' }}>
-              <span className="elder-panel__icon" aria-hidden="true"><ShieldCheck size={16} /></span>
-              <div className="elder-panel__body">
-                <div className="elder-panel__head">Repayment Verifications</div>
-                <div className="elder-panel__msg">
-                  You have <strong>{pendingVerifications.length}</strong> manual payment claims awaiting reference validation.
-                </div>
-              </div>
-              <button className="elder-panel__cta" onClick={() => setVerifyRepaymentModalOpen(true)}>Verify Now</button>
-            </div>
-          )}
+
 
           <div className="elder-panel">
             <span className="elder-panel__icon" aria-hidden="true"><HandCoins size={16} /></span>
@@ -1058,14 +996,7 @@ export default function DashboardTestPage() {
               <span className="action-card__arrow" aria-hidden="true"><ArrowUpRight size={16} /></span>
             </button>
 
-            <button className="action-card" onClick={() => setRepaymentModalOpen(true)}>
-              <span className="action-card__icon" aria-hidden="true"><Banknote size={20} /></span>
-              <span className="action-card__body">
-                <span className="action-card__head">Submit Loan Repayment</span>
-                <span className="action-card__sub">Declare an external GCash/Maya transfer reference code to clear an active balance installment.</span>
-              </span>
-              <span className="action-card__arrow" aria-hidden="true"><ArrowUpRight size={16} /></span>
-            </button>
+
           </div>
 
           <div className="records">
@@ -2240,73 +2171,7 @@ export default function DashboardTestPage() {
         </div>
       )}
 
-      {/* --- REPAYMENT SUBMISSION MODAL (MEMBER SIDE) --- */}
-      {repaymentModalOpen && (
-        <div className="loan-modal is-open">
-          <div className="loan-modal__backdrop" onClick={() => setRepaymentModalOpen(false)}></div>
-          <div className="loan-modal__dialog p-6 bg-white rounded-2xl border border-gray-200">
-            <header className="flex justify-between items-center mb-6">
-              <h2 className="text-lg font-bold tracking-tight">Submit Repayment Reference</h2>
-              <button onClick={() => setRepaymentModalOpen(false)} className="text-gray-400 hover:text-gray-900"><X size={16} /></button>
-            </header>
-            <div className="space-y-4">
-              <div className="field">
-                <label className="field__label">Amount Settled (₱)</label>
-                <input type="number" placeholder="0.00" value={payAmount} onChange={e => setPayAmount(e.target.value)} className="input" />
-              </div>
-              <div className="field">
-                <label className="field__label">Transaction Reference Code</label>
-                <input type="text" placeholder="e.g. Instapay Ref or GCash Ref ID" value={payRef} onChange={e => setPayRef(e.target.value)} className="input" style={{ fontFamily: 'monospace' }} />
-                <span className="field__hint">Elders look up this key to confirm the funds reached the treasury vault.</span>
-              </div>
-              <div className="field">
-                <label className="field__label">Memo / Notes (Optional)</label>
-                <textarea placeholder="Any extra confirmation data..." value={payNotes} onChange={e => setPayNotes(e.target.value)} className="input" />
-              </div>
-              <button onClick={submitRepaymentClaim} className="btn btn-primary w-full mt-4">
-                Dispatch Repayment Claim
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* --- REPAYMENT VERIFICATION QUEUE MODAL (ELDER SIDE) --- */}
-      {verifyRepaymentModalOpen && (
-        <div className="loan-modal is-open">
-          <div className="loan-modal__backdrop" onClick={() => setVerifyRepaymentModalOpen(false)}></div>
-          <div className="loan-modal__dialog p-6 bg-white rounded-2xl border border-gray-200">
-            <header className="flex justify-between items-center mb-6">
-              <h2 className="text-lg font-bold tracking-tight">Repayment Reference Audit</h2>
-              <button onClick={() => setVerifyRepaymentModalOpen(false)} className="text-gray-400 hover:text-gray-900"><X size={16} /></button>
-            </header>
-            <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
-              {pendingVerifications.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6">No repayment claims currently require reference validation.</p>
-              ) : (
-                pendingVerifications.map(claim => (
-                  <div key={claim.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="text-sm font-bold text-gray-900">{claim.memberName}</h4>
-                        <p className="text-xs text-gray-400 mt-0.5">Submitted {claim.date}</p>
-                      </div>
-                      <span className="text-sm font-extrabold text-gray-900">₱ {claim.amount.toLocaleString()}</span>
-                    </div>
-                    <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-600 flex justify-between items-center">
-                      <span>Ref ID: <strong className="font-mono text-gray-900">{claim.refNum}</strong></span>
-                    </div>
-                    <div className="flex gap-2 pt-1">
-                      <button onClick={() => verifyRepayment(claim.id, 'reject')} className="btn-reject py-2 text-xs flex-1">Flag/Decline</button>
-                      <button onClick={() => verifyRepayment(claim.id, 'approve')} className="btn-approve py-2 text-xs flex-1">Approve Payment</button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
     </>
   );

@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { verifyWalletSignature } from '@/lib/auth';
 
 export async function POST(request: Request) {
-    const sig = await verifyWalletSignature(request);
-    if (sig instanceof NextResponse) return sig;
+    // The caller is not yet a registered member, so we can't use
+    // verifyAddressAuth (which checks membership). Instead, read the
+    // wallet address from the X-Wallet-Address header — the CIP-30
+    // connect handshake already proved wallet ownership.
+    const headerAddress = request.headers.get('X-Wallet-Address');
+    if (!headerAddress || !headerAddress.startsWith('addr')) {
+        return NextResponse.json({ error: 'Missing or invalid X-Wallet-Address header' }, { status: 401 });
+    }
     
     try {
         const { walletAddress, alias, communityId, barangay, email } = await request.json();
@@ -15,8 +20,8 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Wallet address, alias, community, and email are required' }, { status: 400 });
         }
 
-        if (walletAddress !== sig.walletAddress) {
-            return NextResponse.json({ error: 'walletAddress in body must match the signing wallet' }, { status: 403 });
+        if (walletAddress !== headerAddress) {
+            return NextResponse.json({ error: 'walletAddress in body must match the authenticated wallet' }, { status: 403 });
         }
 
         // members.wallet_address now FKs to wallets (phase4_wallets_identity) —

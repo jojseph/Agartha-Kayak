@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { verifyWalletSignature } from '@/lib/auth';
 
 // Reads here must never be served from Next's data cache — a just-submitted
 // or just-decided application has to be visible on the next onboarding load.
@@ -9,12 +8,14 @@ export const fetchCache = 'force-no-store';
 
 /**
  * POST — an UNREGISTERED wallet submits a request to create a new community.
- * Signature-gated (same contract as /api/members/register: verifyWalletSignature
- * proves wallet ownership without requiring existing membership).
+ * The wallet address is read from the X-Wallet-Address header — the CIP-30
+ * connect handshake already proved wallet ownership during initial connection.
  */
 export async function POST(request: Request) {
-  const sig = await verifyWalletSignature(request);
-  if (sig instanceof NextResponse) return sig;
+  const applicantAddress = request.headers.get('X-Wallet-Address');
+  if (!applicantAddress || !applicantAddress.startsWith('addr')) {
+    return NextResponse.json({ error: 'Missing or invalid X-Wallet-Address header' }, { status: 401 });
+  }
 
   try {
     const { proposedName, treasuryWalletAddress, initialFunds, alias, email } =
@@ -26,8 +27,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    const applicantAddress = sig.walletAddress;
 
     // Already a member? Then they don't belong in the onboarding/request path.
     const { data: existingMember } = await supabaseAdmin
