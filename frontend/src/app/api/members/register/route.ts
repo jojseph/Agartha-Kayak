@@ -35,18 +35,30 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Failed to register wallet identity', details: walletError.message }, { status: 500 });
         }
 
-        // Insert the new member into Supabase
+        // Check if member exists and isn't rejected
+        const { data: existingMember } = await supabaseAdmin
+            .from('members')
+            .select('status')
+            .eq('wallet_address', walletAddress)
+            .single();
+
+        if (existingMember && existingMember.status !== 'rejected') {
+            return NextResponse.json({ error: 'Wallet is already registered and not rejected.' }, { status: 400 });
+        }
+
+        // Insert or Update the member into Supabase
         const { data, error } = await supabaseAdmin
             .from('members')
-            .insert([
+            .upsert([
                 { 
                     wallet_address: walletAddress, 
                     alias: alias,
                     email: email,
                     barangay: barangay || null,
-                    community_id: communityId
+                    community_id: communityId,
+                    status: 'pending'
                 }
-            ])
+            ], { onConflict: 'wallet_address' })
             .select()
             .single();
 
