@@ -514,6 +514,12 @@ export default function WalletAuthPage() {
           <p className="text-[14.5px] text-gray-500 leading-[1.6] mb-6">
             Unfortunately, your request to join the cooperative was declined by the community elders. Please contact an elder directly if you believe this was a mistake.
           </p>
+          <button
+            onClick={() => { setAppState('needs_alias'); }}
+            className="inline-flex items-center justify-center w-full h-12 bg-[#0A0A0A] text-white rounded-full text-[14.5px] font-semibold hover:bg-gray-800 transition-colors mb-3"
+          >
+            Apply Again
+          </button>
           <button onClick={handleBack} className="inline-flex items-center justify-center w-full h-12 bg-[#F4F4F2] text-[#0A0A0A] rounded-full text-[14.5px] font-semibold hover:bg-[#E5E5E2] transition-colors">
             Return Home
           </button>
