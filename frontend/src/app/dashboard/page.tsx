@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useWallet } from '@meshsdk/react';
-import { MeshTxBuilder, BlockfrostProvider, type UTxO } from '@meshsdk/core';
+import { MeshTxBuilder, BlockfrostProvider, BrowserWallet } from '@meshsdk/core';
 import { useRouter } from 'next/navigation';
 import { resolveWalletAddress, walletAuthFetch } from '@/lib/walletAuthClient';
 import {
@@ -573,7 +573,6 @@ export default function DashboardTestPage() {
 
   // Pending member requests
   const [pendingMembers, setPendingMembers] = useState<PendingMember[]>([]);
-  const [memberTab, setMemberTab] = useState<'pending' | 'rejected'>('pending');
 
   // Submitted treasury loan ID for success screen
   const [tLoanId, setTLoanId] = useState<string | null>(null);
@@ -591,6 +590,7 @@ export default function DashboardTestPage() {
   const [gasProposing, setGasProposing] = useState(false);
   const [gasAmount, setGasAmount] = useState('');
   const [gasReason, setGasReason] = useState('');
+  const [gasExecuting, setGasExecuting] = useState(false);
 
 
   // Treasury Loan Form State
@@ -922,7 +922,6 @@ export default function DashboardTestPage() {
   const openPendingMemberModal = async () => {
     if (!address) return;
     try {
-      setMemberTab('pending');
       const res = await fetch(`/api/members/pending?address=${address}`);
       if (res.ok) {
         const data = await res.json();
@@ -2305,36 +2304,11 @@ export default function DashboardTestPage() {
             </header>
 
             <div className="loan-modal__body" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
-              <div className="flex bg-gray-100 p-1 rounded-xl mb-6 select-none">
-                <button
-                  type="button"
-                  className={`flex-1 text-center py-2 text-sm font-semibold rounded-lg transition-all ${
-                    memberTab === 'pending'
-                      ? 'bg-white text-gray-900 shadow-sm border border-gray-200/40'
-                      : 'text-gray-500 hover:text-gray-900 border border-transparent'
-                  }`}
-                  onClick={() => setMemberTab('pending')}
-                >
-                  New Requests ({pendingMembers.filter((m: any) => (m.status || 'pending') === 'pending').length})
-                </button>
-                <button
-                  type="button"
-                  className={`flex-1 text-center py-2 text-sm font-semibold rounded-lg transition-all ${
-                    memberTab === 'rejected'
-                      ? 'bg-white text-gray-900 shadow-sm border border-gray-200/40'
-                      : 'text-gray-500 hover:text-gray-900 border border-transparent'
-                  }`}
-                  onClick={() => setMemberTab('rejected')}
-                >
-                  Declined ({pendingMembers.filter((m: any) => m.status === 'rejected').length})
-                </button>
-              </div>
-
               <div className="pending-list">
                 {pendingMembers
-                  .filter((m: any) => (m.status || 'pending') === memberTab)
+                  .filter((m: any) => (m.status || 'pending') === 'pending')
                   .map((member: any) => (
-                    <div key={member.wallet_address} className={`pending-card ${memberTab === 'rejected' ? 'is-rejected' : ''}`} style={{ marginBottom: '12px' }}>
+                    <div key={member.wallet_address} className="pending-card" style={{ marginBottom: '12px' }}>
                       <div className="pending-card__top">
                         <div className="pending-card__requester">
                           <div className="pending-card__avatar">{(member.alias || '??').slice(0, 2).toUpperCase()}</div>
@@ -2354,38 +2328,28 @@ export default function DashboardTestPage() {
                         <div><span className="pending-card__detail-label">Date Joined</span><span className="pending-card__detail-value">{new Date(member.created_at).toLocaleDateString()}</span></div>
                       </div>
 
-                      {memberTab === 'pending' ? (
-                        <div className="pending-card__actions">
-                          <button className="btn-reject" onClick={() => respondToMember(member.wallet_address, 'rejected')}>
-                            <X size={14} strokeWidth={2.2} /> Reject
-                          </button>
-                          <button className="btn-approve" onClick={() => respondToMember(member.wallet_address, 'approved')}>
-                            <Check size={14} strokeWidth={2.2} /> Approve
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="pending-card__actions" style={{ gridTemplateColumns: '1fr' }}>
-                          <button className="btn-approve" onClick={() => respondToMember(member.wallet_address, 'approved')}>
-                            <Check size={14} strokeWidth={2.2} /> Approve Member
-                          </button>
-                        </div>
-                      )}
+                      <div className="pending-card__actions">
+                        <button className="btn-reject" onClick={() => respondToMember(member.wallet_address, 'rejected')}>
+                          <X size={14} strokeWidth={2.2} /> Reject
+                        </button>
+                        <button className="btn-approve" onClick={() => respondToMember(member.wallet_address, 'approved')}>
+                          <Check size={14} strokeWidth={2.2} /> Approve
+                        </button>
+                      </div>
                     </div>
                   ))}
               </div>
 
-              {pendingMembers.filter((m: any) => (m.status || 'pending') === memberTab).length === 0 && (
+              {pendingMembers.filter((m: any) => (m.status || 'pending') === 'pending').length === 0 && (
                 <div className="elder-empty is-visible">
                   <div className="elder-empty__icon">
-                    {memberTab === 'pending' ? <Check size={22} strokeWidth={2.5} /> : <X size={22} strokeWidth={2.5} />}
+                    <Check size={22} strokeWidth={2.5} />
                   </div>
                   <div className="elder-empty__title">
-                    {memberTab === 'pending' ? 'All Caught Up' : 'No Declined Requests'}
+                    All Caught Up
                   </div>
                   <div className="elder-empty__sub">
-                    {memberTab === 'pending'
-                      ? 'There are no pending registrations for your community right now.'
-                      : 'There are no declined registrations in your community.'}
+                    There are no pending registrations for your community right now.
                   </div>
                   <button className="elder-empty__close" onClick={() => setPendingMemberModalOpen(false)}>Close</button>
                 </div>
@@ -2777,7 +2741,7 @@ export default function DashboardTestPage() {
                       </div>
 
                       {/* Approving */}
-                      {g.status === 'pending' && !g.has_signed && memberData?.role === 'elder' && (
+                      {g.status === 'pending' && !g.has_signed && memberData?.role === 'elder' && g.proposed_by !== address && (
                         <div className="pending-card__actions">
                           <button className="btn-approve" onClick={async () => {
                             const res = await walletAuthFetch(wallet, '/api/treasury/gas/approve', {
@@ -2796,15 +2760,10 @@ export default function DashboardTestPage() {
                       {/* Executing (Owner Only) */}
                       {g.status === 'approved' && memberData?.role === 'owner' && (
                         <div className="pending-card__actions">
-                          <button className="btn-primary" onClick={async () => {
+                          <button className="btn-primary" disabled={gasExecuting} onClick={async () => {
+                            if (gasExecuting) return;
+                            setGasExecuting(true);
                             try {
-                              // Mesh React v2 returns CIP-30 hex data from the base methods.
-                              // The tx builder needs Mesh UTXO objects and bech32 addresses.
-                              const meshWallet = wallet as typeof wallet & {
-                                getUtxosMesh?: () => Promise<UTxO[]>;
-                                getChangeAddressBech32?: () => Promise<string>;
-                                signTxReturnFullTx?: (tx: string, partialSign?: boolean) => Promise<string>;
-                              };
                               const amountAda = Number(g.amount);
                               const amountLovelaceNumber = Math.floor(amountAda * 1000000);
                               const amountLovelace = amountLovelaceNumber.toString();
@@ -2812,27 +2771,26 @@ export default function DashboardTestPage() {
                                 throw new Error("Invalid proposal amount");
                               }
 
-                              const utxos = (meshWallet.getUtxosMesh
-                                ? await meshWallet.getUtxosMesh()
-                                : await wallet.getUtxos()) as UTxO[];
-                              if (!utxos || utxos.length === 0) {
-                                throw new Error("No UTXOs found in your wallet. Ensure you have tADA in your Lace wallet.");
-                              }
-
                               const masterAddress = process.env.NEXT_PUBLIC_CARDANO_SUBMITTER_ADDRESS || 'addr_test1vz03hd2vh5vzrm3d586fztnx9enksfdrgufh484ygagnnyqvudeht';
                               const blockfrostProjectId = process.env.NEXT_PUBLIC_BLOCKFROST_PROJECT_ID;
                               if (!blockfrostProjectId) {
                                 throw new Error("Missing NEXT_PUBLIC_BLOCKFROST_PROJECT_ID. Add your preprod Blockfrost project ID to the frontend environment.");
                               }
-                              
+
+                              // Resolve the bech32 change address (Lace + Mesh v2 beta may return hex)
+                              const changeAddress = await resolveWalletAddress(wallet);
+
+                              // Use BlockfrostProvider to fetch UTXOs in proper Mesh UTxO format.
+                              // wallet.getUtxos() returns raw CIP-30 hex CBOR strings which
+                              // MeshTxBuilder cannot parse, causing TxSubmitFail.
                               const provider = new BlockfrostProvider(blockfrostProjectId);
-                              const builder = new MeshTxBuilder({ fetcher: provider, submitter: provider });
-                              const changeAddress = meshWallet.getChangeAddressBech32
-                                ? await meshWallet.getChangeAddressBech32()
-                                : await wallet.getChangeAddress();
-                              if (!changeAddress.startsWith('addr')) {
-                                throw new Error("Wallet returned a non-bech32 change address. Reconnect Lace and try again.");
+                              const utxos = await provider.fetchAddressUTxOs(changeAddress);
+                              if (!utxos || utxos.length === 0) {
+                                throw new Error("No UTXOs found for your wallet address. Ensure you have tADA in your Lace wallet.");
                               }
+
+                              const builder = new MeshTxBuilder({ fetcher: provider, submitter: provider });
+                              builder.setNetwork('preprod');
                               
                               builder
                                 .txOut(masterAddress, [{ unit: "lovelace", quantity: amountLovelace }])
@@ -2840,10 +2798,24 @@ export default function DashboardTestPage() {
                                 .selectUtxosFrom(utxos);
                               
                               const unsignedTx = await builder.complete();
-                              const signedTx = meshWallet.signTxReturnFullTx
-                                ? await meshWallet.signTxReturnFullTx(unsignedTx)
-                                : await wallet.signTx(unsignedTx, false);
-                              const txHash = await wallet.submitTx(signedTx);
+                              // wallet.signTx() from useWallet() returns raw CIP-30 witness set,
+                              // NOT a full signed transaction. We must assemble them.
+                              const witnessSet = await wallet.signTx(unsignedTx, false);
+                              const signedTx = BrowserWallet.addBrowserWitnesses(unsignedTx, witnessSet);
+
+                              let txHash: string;
+                              try {
+                                txHash = await provider.submitTx(signedTx);
+                              } catch (submitErr: any) {
+                                // Check if the error means the tx was already submitted
+                                const errMsg = JSON.stringify(submitErr?.data || submitErr?.response?.data || submitErr);
+                                if (errMsg.includes('already been included') || errMsg.includes('All inputs are spent')) {
+                                  // Transaction was already submitted in a previous attempt
+                                  alert('This transaction appears to have already been submitted. Please check your wallet balance on Cardanoscan.');
+                                  return;
+                                }
+                                throw submitErr;
+                              }
 
                               if (!txHash) return;
 
@@ -2863,9 +2835,12 @@ export default function DashboardTestPage() {
                               } else { alert(data.error || 'Execution failed on server'); }
                             } catch (err: any) {
                               console.error('Lace transaction failed:', err);
-                              alert('Transaction failed or was canceled: ' + err.message);
+                              const errDetail = err?.message || err?.data?.message || JSON.stringify(err?.data || err);
+                              alert('Transaction failed or was canceled: ' + errDetail);
+                            } finally {
+                              setGasExecuting(false);
                             }
-                          }}><ArrowUpRight size={14} /> Execute & Send tADA</button>
+                          }}>{gasExecuting ? 'Submitting…' : <><ArrowUpRight size={14} /> Execute & Send tADA</>}</button>
                         </div>
                       )}
                     </div>
