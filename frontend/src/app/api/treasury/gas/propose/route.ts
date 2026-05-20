@@ -52,7 +52,7 @@ export async function POST(request: Request) {
             referenceId: member.community_id,
             memberAddress: proposerAddress,
             amount,
-            currency: 'ADA',
+            currency: 'tADA',
             purpose: `Proposal ${proposal.id}: ${reason}`,
             role: member.role,
             action: 'propose',
