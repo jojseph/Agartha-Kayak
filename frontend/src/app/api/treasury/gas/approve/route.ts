@@ -37,9 +37,10 @@ export async function POST(request: Request) {
             .eq('wallet_address', signerAddress)
             .single();
 
-        // Prevent self-signing if they are the proposer (optional, but standard for governance)
-        // Wait, since we only need 1 elder, if the proposer is an elder, can they sign their own?
-        // Let's allow it unless explicitly requested to prevent self-signing, to keep it simple.
+        // Prevent self-signing if they are the proposer
+        if (proposal.proposed_by === signerAddress) {
+            return NextResponse.json({ error: 'You cannot approve a gas top-up that you proposed.' }, { status: 403 });
+        }
 
         // Insert signature
         const { error: sigError } = await supabaseAdmin
@@ -83,7 +84,7 @@ export async function POST(request: Request) {
                 referenceId: proposal.community_id,
                 memberAddress: proposal.proposed_by,
                 amount: proposal.amount,
-                currency: 'ADA',
+                currency: 'tADA',
                 purpose: `Proposal ${proposalId}: ${proposal.reason}`,
                 approvedBy: (signatures || []).map((sig: any) => sig.signer_address),
                 role: signer?.role ?? 'elder',
