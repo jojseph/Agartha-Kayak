@@ -146,7 +146,6 @@ From the repository root:
 | `/public-records` | Public cooperative ledger view |
 | `/walletAuth` | Wallet connection and registration |
 | `/dashboard` | Main role-aware user dashboard |
-| `/pool` | Treasury pool interface |
 | `/admin` | Platform administration |
 | `/admin/applications` | SuperUser application review |
 
