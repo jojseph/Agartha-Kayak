@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="web/public/logo.png" alt="Agartha Kayak logo" width="140" />
+  <img src="web/src/app/icon.svg" alt="Agartha Kayak logo" width="96" />
 
   <h1>Agartha Kayak</h1>
 
