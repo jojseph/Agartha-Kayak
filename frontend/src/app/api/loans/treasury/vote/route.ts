@@ -70,7 +70,8 @@ export async function POST(request: Request) {
             .select('*', { count: 'exact', head: true })
             .eq('community_id', voter.community_id)
             .in('role', ['elder', 'owner'])
-            .eq('status', 'approved');
+            .eq('status', 'approved')
+            .neq('wallet_address', loan.borrower_address);
 
         if (voterCountError) {
             console.error('Count eligible voters error:', voterCountError);
@@ -236,6 +237,9 @@ export async function POST(request: Request) {
             rejectedBy: vote === 'reject' ? [elderAddress] : undefined,
         });
 
+        const remainingVotes = totalEligible - (approves + rejects);
+        const maxPossibleApproves = approves + remainingVotes;
+
         // Check if majority approved
         if (approves >= majorityThreshold) {
             const { error: approveError } = await supabaseAdmin
@@ -283,7 +287,7 @@ export async function POST(request: Request) {
             }
         }
         // Check if rejection is mathematically certain (remaining votes can't save it)
-        else if (rejects >= majorityThreshold) {
+        else if (maxPossibleApproves < majorityThreshold) {
             const { error: rejectError } = await supabaseAdmin
                 .from('loans')
                 .update({ status: 'rejected' })
