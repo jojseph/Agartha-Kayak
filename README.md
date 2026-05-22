@@ -13,6 +13,8 @@
 
   <p>
     <img src="https://img.shields.io/badge/Next.js-14-black?style=for-the-badge&logo=nextdotjs" alt="Next.js 14" />
+    <img src="https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=0B1720" alt="React 18" />
+    <img src="https://img.shields.io/badge/Tailwind_CSS-3.4-38BDF8?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
     <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
     <img src="https://img.shields.io/badge/Supabase-Postgres-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white" alt="Supabase" />
     <img src="https://img.shields.io/badge/Cardano-Preprod-0033AD?style=for-the-badge&logo=cardano&logoColor=white" alt="Cardano Preprod" />
@@ -53,11 +55,14 @@ Small cooperatives often rely on trust, notebooks, spreadsheets, and verbal appr
 
 | Layer | Tools |
 | --- | --- |
-| Application | Next.js 14 App Router, React 18, TypeScript |
-| Styling | Tailwind CSS, Framer Motion, Lucide React, Recharts |
+| Framework | Next.js 14 App Router |
+| Frontend | React 18, TypeScript |
+| Styling | Tailwind CSS 3.4, PostCSS, clsx, tailwind-merge |
+| UI and Data Visualization | Framer Motion, Lucide React, Recharts |
 | Database | Supabase Postgres |
 | Wallet | Lace, Mesh SDK |
 | Blockchain | Cardano preprod, Blockfrost |
+| Worker Runtime | Node.js, dotenv-cli, concurrently |
 | Testing | Vitest |
 | Tooling | ESLint, Husky, Commitlint, Commitizen |
 
