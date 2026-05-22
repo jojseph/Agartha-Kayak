@@ -321,6 +321,9 @@ export default function DashboardTestPage() {
   const [dashboardRecords, setDashboardRecords] = useState<any[]>([]);
   const [recordsLoading, setRecordsLoading] = useState(true);
   const [recordTab, setRecordTab] = useState<RecordTab>('all');
+  const [publicRecordsPage, setPublicRecordsPage] = useState(1);
+  const [networkQueuePage, setNetworkQueuePage] = useState(1);
+  const [myActivityPage, setMyActivityPage] = useState(1);
   const [activities, setActivities] = useState<any[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
   const [activityTab, setActivityTab] = useState<ActivityTab>('all');
@@ -347,6 +350,9 @@ export default function DashboardTestPage() {
     if (activityTab === 'repayments') return activities.filter(a => a.type === 'repayment_submitted' || a.type === 'repayment_confirmed');
     return activities;
   }, [activities, activityTab]);
+
+  const myActivityTotalPages = Math.ceil(filteredActivities.length / 10);
+  const paginatedActivities = filteredActivities.slice((myActivityPage - 1) * 10, myActivityPage * 10);
 
   const handlePeerLoanStatusChange = async (loanId: string, newStatus: 'valid' | 'invalid') => {
     if (!address || !wallet) return;
@@ -428,6 +434,9 @@ export default function DashboardTestPage() {
     if (recordTab === 'all') return dashboardRecords;
     return dashboardRecords.filter(record => record.ledgerCategory === recordTab);
   }, [dashboardRecords, recordTab]);
+
+  const publicRecordsTotalPages = Math.ceil(filteredDashboardRecords.length / 10);
+  const paginatedDashboardRecords = filteredDashboardRecords.slice((publicRecordsPage - 1) * 10, publicRecordsPage * 10);
 
   const toggleRowVisibility = async (record: any) => {
     if (!record.canToggleVisibility || !record.targetType || !record.targetId) return;
@@ -550,6 +559,7 @@ export default function DashboardTestPage() {
   const [treasuryElderModalOpen, setTreasuryElderModalOpen] = useState(false);
   const [pendingMemberModalOpen, setPendingMemberModalOpen] = useState(false);
   const [txModal, setTxModal] = useState<{ isOpen: boolean, txKey: string | null }>({ isOpen: false, txKey: null });
+  const [activityDetailModal, setActivityDetailModal] = useState<{ isOpen: boolean, activity: any | null }>({ isOpen: false, activity: null });
   const [isCopied, setIsCopied] = useState(false);
 
   // Community stats (dynamic)
@@ -591,6 +601,7 @@ export default function DashboardTestPage() {
   const [gasAmount, setGasAmount] = useState('');
   const [gasReason, setGasReason] = useState('');
   const [gasExecuting, setGasExecuting] = useState(false);
+  const [ownerConsoleModalOpen, setOwnerConsoleModalOpen] = useState(false);
 
 
   // Treasury Loan Form State
@@ -646,6 +657,9 @@ export default function DashboardTestPage() {
 
     return Array.from(groups.values());
   }, [queueItems]);
+
+  const networkQueueTotalPages = Math.ceil(groupedQueue.length / 10);
+  const paginatedQueue = groupedQueue.slice((networkQueuePage - 1) * 10, networkQueuePage * 10);
 
   // Countdown timer for next batch, synced from the local worker status file.
   const [nextBatchIn, setNextBatchIn] = useState(0);
@@ -1104,48 +1118,13 @@ export default function DashboardTestPage() {
 
           {/* --- OWNER-ONLY: ROLE MANAGEMENT (promote member ⇄ demote elder) --- */}
           {memberData?.role === 'owner' && (
-            <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mb-4 transition-all hover:border-gray-300">
-              <div className="flex items-center gap-2 mb-4 text-[#0A0A0A]">
-                <Shield size={18} className="text-red-600" />
-                <h3 className="text-base font-bold tracking-tight">Owner Management Console</h3>
+            <div className="elder-panel">
+              <span className="elder-panel__icon" aria-hidden="true" style={{ color: '#dc2626', background: '#fee2e2' }}><Shield size={16} /></span>
+              <div className="elder-panel__body">
+                <div className="elder-panel__head">Owner Management Console</div>
+                <div className="elder-panel__msg">Promote members to Elders or manage leadership roles within your community.</div>
               </div>
-
-              <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/50">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                  Change Member Role
-                </label>
-                <p className="text-xs text-gray-500 mb-3">
-                  Promote a member to Elder, or demote an Elder back to Member. Limited to your community.
-                </p>
-                <div className="flex gap-2">
-                  <select
-                    className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-gray-900 appearance-none"
-                    value={ownerTarget}
-                    onChange={e => setOwnerTarget(e.target.value)}
-                  >
-                    <option value="">Select a member...</option>
-                    {ownerMembers.map(m => (
-                      <option key={m.wallet_address} value={m.wallet_address}>
-                        {m.alias} — {m.role === 'elder' ? 'Elder' : 'Member'}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={handleOwnerRoleChange}
-                    disabled={ownerRoleBusy || !ownerTarget}
-                    className="bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                  >
-                    {ownerRoleBusy
-                      ? 'Working…'
-                      : ownerMembers.find(m => m.wallet_address === ownerTarget)?.role === 'elder'
-                        ? 'Demote to Member'
-                        : 'Promote to Elder'}
-                  </button>
-                </div>
-                {ownerMembers.length === 0 && (
-                  <p className="text-xs text-gray-400 mt-3">No members or elders in your community yet.</p>
-                )}
-              </div>
+              <button className="elder-panel__cta" onClick={() => setOwnerConsoleModalOpen(true)}>Manage Roles</button>
             </div>
           )}
 
@@ -1222,7 +1201,7 @@ export default function DashboardTestPage() {
                   <span style={{ marginLeft: 8, color: 'var(--text-2)', fontSize: 13 }}>All receipts have been etched — queue is clear</span>
                 </div>
               ) : (
-                groupedQueue.map((group, idx) => (
+                paginatedQueue.map((group, idx) => (
                   <div key={idx} className={`nq-item nq-item--${group.status === 'batched' ? 'batched' : group.status === 'etched' ? 'done' : 'queued'}`}>
                     <div className="nq-item__dot" />
                     <div className="nq-item__body">
@@ -1246,6 +1225,31 @@ export default function DashboardTestPage() {
                 ))
               )}
             </div>
+
+            {networkQueueTotalPages > 1 && (
+              <div className="flex justify-between items-center px-4 py-2 bg-white border-t border-gray-100" style={{ borderTop: '1px solid var(--border)' }}>
+                <span className="text-xs text-gray-500">
+                  Showing {(networkQueuePage - 1) * 10 + 1} to {Math.min(networkQueuePage * 10, groupedQueue.length)} of {groupedQueue.length}
+                </span>
+                <div className="flex gap-2">
+                  <button 
+                    disabled={networkQueuePage === 1}
+                    onClick={() => setNetworkQueuePage(p => Math.max(1, p - 1))}
+                    className="px-2 py-1 text-[11px] font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Prev
+                  </button>
+                  <button 
+                    disabled={networkQueuePage === networkQueueTotalPages}
+                    onClick={() => setNetworkQueuePage(p => Math.min(networkQueueTotalPages, p + 1))}
+                    className="px-2 py-1 text-[11px] font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="network-queue__footer">
               <span>{batchStats.queuedCount} receipt{batchStats.queuedCount !== 1 ? 's' : ''} pending · Cardano batches minimize fees · 16KB overflow handled automatically</span>
             </div>
@@ -1287,7 +1291,10 @@ export default function DashboardTestPage() {
                     role="tab"
                     aria-selected={activityTab === tab.id}
                     className={activityTab === tab.id ? 'is-active' : ''}
-                    onClick={() => setActivityTab(tab.id)}
+                    onClick={() => {
+                      setActivityTab(tab.id);
+                      setMyActivityPage(1);
+                    }}
                   >
                     {tab.label}
                   </button>
@@ -1320,7 +1327,7 @@ export default function DashboardTestPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredActivities.map(act => {
+                  paginatedActivities.map(act => {
                     // P2P: Lender can mark valid/invalid on active loans
                     const isActionablePeerLoan =
                       act.isLender &&
@@ -1354,7 +1361,12 @@ export default function DashboardTestPage() {
                     ) : '—';
 
                     return (
-                      <tr key={act.id}>
+                      <tr 
+                        key={act.id} 
+                        onClick={() => setActivityDetailModal({ isOpen: true, activity: act })} 
+                        style={{ cursor: 'pointer' }} 
+                        className="hover:bg-gray-50 transition-colors"
+                      >
                         <td className="cell-date">
                           {new Date(act.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </td>
@@ -1373,7 +1385,7 @@ export default function DashboardTestPage() {
                           {amountCell}
                         </td>
                         <td style={{ textAlign: 'center' }}>
-                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-md transition-all ${
+                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-md transition-all whitespace-nowrap ${
                             act.statusBadge === 'Pending review' ? 'bg-amber-50 border border-amber-200 text-amber-700' :
                             act.statusBadge === 'Approved' || act.statusBadge === 'Active' || act.statusBadge === 'Fully paid' ? 'bg-green-50 border border-green-200 text-green-700' :
                             act.statusBadge === 'Overdue' ? 'bg-orange-50 border border-orange-300 text-orange-700' :
@@ -1397,7 +1409,7 @@ export default function DashboardTestPage() {
                                 <button
                                   id={`mark-valid-${act.loanId}`}
                                   disabled={isBusy}
-                                  onClick={() => handlePeerLoanStatusChange(act.loanId, 'valid')}
+                                  onClick={(e) => { e.stopPropagation(); handlePeerLoanStatusChange(act.loanId, 'valid'); }}
                                   style={{ padding: '4px 10px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', border: '1px solid #10b981', background: isBusy ? '#d1fae5' : '#ecfdf5', color: '#065f46', cursor: isBusy ? 'not-allowed' : 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap' }}
                                   title="Mark as Valid — confirm debt/item was returned"
                                 >
@@ -1408,7 +1420,7 @@ export default function DashboardTestPage() {
                                 <button
                                   id={`mark-invalid-${act.loanId}`}
                                   disabled={isBusy}
-                                  onClick={() => handlePeerLoanStatusChange(act.loanId, 'invalid')}
+                                  onClick={(e) => { e.stopPropagation(); handlePeerLoanStatusChange(act.loanId, 'invalid'); }}
                                   style={{ padding: '4px 10px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', border: '1px solid #f87171', background: isBusy ? '#fee2e2' : '#fff5f5', color: '#991b1b', cursor: isBusy ? 'not-allowed' : 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap' }}
                                   title="Mark as Invalid — borrower has defaulted"
                                 >
@@ -1423,7 +1435,8 @@ export default function DashboardTestPage() {
                               <button
                                 id={`confirm-payment-${act.loanId}`}
                                 disabled={isBusy}
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   const input = window.prompt(`Confirm repayment for ${act.borrowerAlias || 'borrower'}\nRemaining balance: ₱${Number(act.remainingBalance).toLocaleString('en-PH', { minimumFractionDigits: 2 })}\n\nEnter payment amount (PHP):`);
                                   if (!input) return;
                                   const amount = parseFloat(input.replace(/,/g, ''));
@@ -1440,7 +1453,7 @@ export default function DashboardTestPage() {
                                 <button
                                   id={`mark-overdue-${act.loanId}`}
                                   disabled={isBusy}
-                                  onClick={() => manageTreasuryLoanStatus(act.loanId, 'overdue')}
+                                  onClick={(e) => { e.stopPropagation(); manageTreasuryLoanStatus(act.loanId, 'overdue'); }}
                                   style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, borderRadius: '6px', border: '1px solid #f59e0b', background: isBusy ? '#fef3c7' : '#fffbeb', color: '#92400e', cursor: isBusy ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
                                   title="Flag as overdue — missed payment deadline"
                                 >
@@ -1452,7 +1465,7 @@ export default function DashboardTestPage() {
                                 <button
                                   id={`reinstate-${act.loanId}`}
                                   disabled={isBusy}
-                                  onClick={() => manageTreasuryLoanStatus(act.loanId, 'approved', 'Reinstated — borrower caught up')}
+                                  onClick={(e) => { e.stopPropagation(); manageTreasuryLoanStatus(act.loanId, 'approved', 'Reinstated — borrower caught up'); }}
                                   style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 600, borderRadius: '6px', border: '1px solid #6366f1', background: isBusy ? '#e0e7ff' : '#eef2ff', color: '#3730a3', cursor: isBusy ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
                                   title="Reinstate — borrower has caught up on payments"
                                 >
@@ -1463,7 +1476,8 @@ export default function DashboardTestPage() {
                               <button
                                 id={`mark-defaulted-${act.loanId}`}
                                 disabled={isBusy}
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   if (!window.confirm(`Mark this loan as DEFAULTED for ${act.borrowerAlias}?\n\nThis will activate the on-chain collateral record as evidence for enforcement.`)) return;
                                   manageTreasuryLoanStatus(act.loanId, 'defaulted');
                                 }}
@@ -1483,6 +1497,30 @@ export default function DashboardTestPage() {
                 )}
               </tbody>
             </table>
+
+            {myActivityTotalPages > 1 && (
+              <div className="flex justify-between items-center px-4 py-3 bg-white border-t border-gray-100 rounded-b-xl" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+                <span className="text-xs text-gray-500">
+                  Showing {(myActivityPage - 1) * 10 + 1} to {Math.min(myActivityPage * 10, filteredActivities.length)} of {filteredActivities.length} activities
+                </span>
+                <div className="flex gap-2">
+                  <button 
+                    disabled={myActivityPage === 1}
+                    onClick={() => setMyActivityPage(p => Math.max(1, p - 1))}
+                    className="px-3 py-1 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <button 
+                    disabled={myActivityPage === myActivityTotalPages}
+                    onClick={() => setMyActivityPage(p => Math.min(myActivityTotalPages, p + 1))}
+                    className="px-3 py-1 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="records">
@@ -1499,7 +1537,10 @@ export default function DashboardTestPage() {
                     role="tab"
                     aria-selected={recordTab === tab.id}
                     className={recordTab === tab.id ? 'is-active' : ''}
-                    onClick={() => setRecordTab(tab.id)}
+                    onClick={() => {
+                      setRecordTab(tab.id);
+                      setPublicRecordsPage(1);
+                    }}
                   >
                     {tab.label}
                   </button>
@@ -1534,7 +1575,7 @@ export default function DashboardTestPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredDashboardRecords.map(record => {
+                  paginatedDashboardRecords.map(record => {
                     const visibilityKey = record.visibilityKey || record.id;
                     const isPublicRecord = rowVisibility[visibilityKey] ?? record.isPublic;
 
@@ -1583,11 +1624,35 @@ export default function DashboardTestPage() {
                 )}
               </tbody>
             </table>
+            
+            {publicRecordsTotalPages > 1 && (
+              <div className="flex justify-between items-center px-4 py-3 bg-white border-t border-gray-100 rounded-b-xl" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+                <span className="text-xs text-gray-500">
+                  Showing {(publicRecordsPage - 1) * 10 + 1} to {Math.min(publicRecordsPage * 10, filteredDashboardRecords.length)} of {filteredDashboardRecords.length} records
+                </span>
+                <div className="flex gap-2">
+                  <button 
+                    disabled={publicRecordsPage === 1}
+                    onClick={() => setPublicRecordsPage(p => Math.max(1, p - 1))}
+                    className="px-3 py-1 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <button 
+                    disabled={publicRecordsPage === publicRecordsTotalPages}
+                    onClick={() => setPublicRecordsPage(p => Math.min(publicRecordsTotalPages, p + 1))}
+                    className="px-3 py-1 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="app-footer">
             Agartha Kayak — The Digital Bayanihan Ledger.<br />
-            Treasury secured on Cardano · Disbursements settled in PHP via GCash &amp; Maya.
+            Treasury secured on Cardano.
           </div>
         </div>
       </section>
@@ -2022,6 +2087,65 @@ export default function DashboardTestPage() {
       )}
 
 
+      {/* --- OWNER CONSOLE MODAL --- */}
+      {ownerConsoleModalOpen && (
+        <div className="loan-modal is-open">
+          <div className="loan-modal__backdrop" onClick={() => setOwnerConsoleModalOpen(false)}></div>
+          <div className="loan-modal__dialog">
+            <header className="loan-modal__header">
+              <div className="elder-modal__title-block">
+                <span className="elder-modal__title">Owner Management Console</span>
+                <span className="elder-modal__sub">Change Member Roles</span>
+              </div>
+              <button className="loan-modal__close" onClick={() => setOwnerConsoleModalOpen(false)}><X size={14} /></button>
+            </header>
+
+            <div className="loan-modal__body" style={{ padding: '24px' }}>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                Select Member
+              </label>
+              <p className="text-xs text-gray-500 mb-4">
+                Promote a member to Elder, or demote an Elder back to Member. Limited to your community.
+              </p>
+              
+              <div className="flex flex-col gap-4">
+                <select
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-gray-900 appearance-none"
+                  value={ownerTarget}
+                  onChange={e => setOwnerTarget(e.target.value)}
+                >
+                  <option value="">Select a member...</option>
+                  {ownerMembers.map(m => (
+                    <option key={m.wallet_address} value={m.wallet_address}>
+                      {m.alias} — {m.role === 'elder' ? 'Elder' : 'Member'}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={() => {
+                    handleOwnerRoleChange();
+                    setOwnerConsoleModalOpen(false);
+                  }}
+                  disabled={ownerRoleBusy || !ownerTarget}
+                  className="w-full bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold px-4 py-3 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
+                >
+                  {ownerRoleBusy
+                    ? 'Working…'
+                    : ownerMembers.find(m => m.wallet_address === ownerTarget)?.role === 'elder'
+                      ? 'Demote to Member'
+                      : 'Promote to Elder'}
+                </button>
+
+                {ownerMembers.length === 0 && (
+                  <p className="text-xs text-gray-400 mt-2 text-center">No members or elders in your community yet.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* --- TREASURY ELDER MODAL --- */}
       {treasuryElderModalOpen && (
         <div className="loan-modal is-open">
@@ -2093,7 +2217,9 @@ export default function DashboardTestPage() {
                             Signatures: <strong style={{ color: 'var(--text)' }}>{req.approve_count} of 2</strong> required
                           </span>
                           {alreadyVoted && req.status === 'pending' && (
-                            <span style={{ color: 'var(--status-green)', fontWeight: 600 }}>✓ You approved</span>
+                            <span style={{ color: req.my_vote === 'approve' ? 'var(--status-green)' : '#b91c1c', fontWeight: 600 }}>
+                              {req.my_vote === 'approve' ? '✓ You approved' : '✗ You rejected'}
+                            </span>
                           )}
                         </div>
 
@@ -2539,7 +2665,113 @@ export default function DashboardTestPage() {
         );
       })()}
 
+
+      {/* --- ACTIVITY DETAIL MODAL --- */}
+      {activityDetailModal.isOpen && activityDetailModal.activity && (() => {
+        const act = activityDetailModal.activity;
+        return (
+          <div className="loan-modal is-open">
+            <div className="loan-modal__backdrop" onClick={() => setActivityDetailModal({ isOpen: false, activity: null })}></div>
+            <div className="loan-modal__dialog">
+              <header className="loan-modal__header">
+                <div className="elder-modal__title-block">
+                  <span className="elder-modal__title">Activity Details</span>
+                  <span className="elder-modal__sub">{act.title}</span>
+                </div>
+                <button className="loan-modal__close" onClick={() => setActivityDetailModal({ isOpen: false, activity: null })}><X size={14} /></button>
+              </header>
+
+              <div className="loan-modal__body" style={{ maxHeight: '70vh', overflowY: 'auto', paddingBottom: '24px' }}>
+                <div className="tx-details">
+                  <div className="tx-detail-row">
+                    <span className="tx-detail-row__label">Type</span>
+                    <span className="tx-detail-row__value" style={{ textTransform: 'capitalize' }}>{act.type?.replace(/_/g, ' ')}</span>
+                  </div>
+                  <div className="tx-detail-row">
+                    <span className="tx-detail-row__label">Date</span>
+                    <span className="tx-detail-row__value">{new Date(act.createdAt).toLocaleString()}</span>
+                  </div>
+                  <div className="tx-detail-row">
+                    <span className="tx-detail-row__label">Status</span>
+                    <span className="tx-detail-row__value">{act.statusBadge || act.status}</span>
+                  </div>
+                  {(act.amount !== undefined && act.amount !== null) && (
+                    <div className="tx-detail-row">
+                      <span className="tx-detail-row__label">Amount</span>
+                      <span className="tx-detail-row__value">₱ {Number(act.amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  {(act.remainingBalance !== undefined && act.remainingBalance !== null) && (
+                    <div className="tx-detail-row">
+                      <span className="tx-detail-row__label">Remaining Balance</span>
+                      <span className="tx-detail-row__value">₱ {Number(act.remainingBalance).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  {act.collateral && (
+                    <div className="tx-detail-row">
+                      <span className="tx-detail-row__label">Collateral</span>
+                      <span className="tx-detail-row__value">{act.collateral}</span>
+                    </div>
+                  )}
+                  {(act.itemName || act.description) && (
+                    <div className="tx-detail-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
+                      <span className="tx-detail-row__label">{act.mode === 'things' ? 'Item' : 'Purpose / Description'}</span>
+                      <span className="tx-detail-row__value" style={{ textAlign: 'left', fontWeight: 500, color: 'var(--text-2)', lineHeight: 1.5 }}>{act.itemName || act.description}</span>
+                    </div>
+                  )}
+                  {act.termMonths && (() => {
+                    const freq = act.repaymentFrequency?.toLowerCase() || 'monthly';
+                    const freqMultiplier = freq === 'weekly' ? 4 : (freq === 'semi_monthly' || freq === 'bimonthly') ? 2 : 1;
+                    const totalPayments = act.termMonths * freqMultiplier;
+                    const minPayment = (act.amount || 0) / totalPayments;
+                    
+                    return (
+                      <div className="tx-detail-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
+                        <span className="tx-detail-row__label">Repayment Plan</span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <span className="tx-detail-row__value" style={{ textTransform: 'capitalize' }}>
+                            {act.termMonths} months / {freq.replace(/_/g, ' ')}
+                          </span>
+                          {act.amount > 0 && (
+                            <span style={{ fontSize: '12px', color: 'var(--status-amber)', fontWeight: 600 }}>
+                              Minimum ₱ {minPayment.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} per {freq === 'weekly' ? 'week' : freq === 'semi_monthly' ? 'half-month' : 'month'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {act.neededByDate && (
+                    <div className="tx-detail-row">
+                      <span className="tx-detail-row__label">When needed</span>
+                      <span className="tx-detail-row__value">
+                        {new Date(act.neededByDate).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}
+                        {act.neededByTime && ` at ${new Date(`2026-01-01T${act.neededByTime}`).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}`}
+                      </span>
+                    </div>
+                  )}
+                  {act.lenderAlias && act.lenderAlias !== memberData?.alias && (
+                    <div className="tx-detail-row">
+                      <span className="tx-detail-row__label">Lender</span>
+                      <span className="tx-detail-row__value">{act.lenderAlias}</span>
+                    </div>
+                  )}
+                  {act.borrowerAlias && act.borrowerAlias !== memberData?.alias && (
+                    <div className="tx-detail-row">
+                      <span className="tx-detail-row__label">Borrower</span>
+                      <span className="tx-detail-row__value">{act.borrowerAlias}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+
       {/* --- RECONCILIATION MODAL --- */}
+
       {reconModalOpen && (
         <div className="loan-modal is-open">
           <div className="loan-modal__backdrop" onClick={() => { setReconModalOpen(false); setReconProposing(false); }}></div>
