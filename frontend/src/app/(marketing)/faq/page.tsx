@@ -12,7 +12,7 @@ export default function FAQ() {
   const faqs = [
     {
       question: "What is Agartha Kayak?",
-      answer: "Agartha Kayak is a digital community piggy bank and record book designed for local neighborhood groups and Barangay Cooperatives. It replaces easily damaged or lost paper record books with a highly secure, digital system where neighbors can pool their money together."
+      answer: "Agartha Kayak is an immutable, blockchain-witnessed cooperative ledger designed for local neighborhood groups and Barangay Cooperatives. It replaces easily damaged or lost paper record books with a highly secure, digital system where neighbors can record their community transactions transparently."
     },
     {
       question: "How are the community funds kept secure?",
@@ -84,7 +84,6 @@ export default function FAQ() {
             <div className="hidden md:flex items-center gap-8">
               {[
                 { name: 'How It Works', path: '/how-it-works' },
-                { name: 'Public Records', path: '#' },
                 { name: 'FAQ', path: '/faq' }
               ].map((link) => (
                 <Link
