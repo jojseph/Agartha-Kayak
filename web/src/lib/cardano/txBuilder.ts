@@ -1,0 +1,163 @@
+import { BlockFrostAPI } from '@blockfrost/blockfrost-js';
+import { BlockfrostProvider, MeshTxBuilder, MeshWallet } from '@meshsdk/core';
+
+function getCardanoNetwork(projectId: string): 'mainnet' | 'preview' | 'preprod' {
+  if (projectId.startsWith('preprod')) return 'preprod';
+  if (projectId.startsWith('preview')) return 'preview';
+  return 'mainnet';
+}
+
+type CardanoEnv = {
+  projectId: string;
+  submitterSkey: string;
+  submitterAddress: string;
+  network: 'mainnet' | 'preview' | 'preprod';
+};
+
+function getCardanoEnv(): CardanoEnv {
+  const projectId = process.env.BLOCKFROST_PROJECT_ID;
+  const submitterSkey = process.env.CARDANO_SUBMITTER_SKEY;
+  const submitterAddress = process.env.CARDANO_SUBMITTER_ADDRESS;
+
+  if (!projectId) {
+    throw new Error('Missing BLOCKFROST_PROJECT_ID environment variable');
+  }
+  if (!submitterSkey) {
+    throw new Error('Missing CARDANO_SUBMITTER_SKEY environment variable');
+  }
+  if (!submitterAddress) {
+    throw new Error('Missing CARDANO_SUBMITTER_ADDRESS environment variable');
+  }
+
+  return {
+    projectId,
+    submitterSkey,
+    submitterAddress,
+    network: getCardanoNetwork(projectId),
+  };
+}
+
+let _provider: BlockfrostProvider | undefined;
+let _client: BlockFrostAPI | undefined;
+
+function getBlockfrostProvider(): BlockfrostProvider {
+  if (!_provider) {
+    _provider = new BlockfrostProvider(getCardanoEnv().projectId, 0);
+  }
+  return _provider;
+}
+
+function getBlockfrostClient(): BlockFrostAPI {
+  if (!_client) {
+    const { projectId, network } = getCardanoEnv();
+    _client = new BlockFrostAPI({ projectId, network });
+  }
+  return _client;
+}
+
+const MAX_METADATA_STRING_BYTES = 64;
+
+function byteSafeChunks(str: string): string[] {
+  const chunks: string[] = [];
+  let current = '';
+  for (const cp of Array.from(str)) {
+    if (Buffer.byteLength(current + cp, 'utf8') > MAX_METADATA_STRING_BYTES) {
+      if (current) chunks.push(current);
+      current = cp;
+    } else {
+      current += cp;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+function chunkMetadataStrings(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return Buffer.byteLength(value, 'utf8') > MAX_METADATA_STRING_BYTES
+      ? byteSafeChunks(value)
+      : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(chunkMetadataStrings);
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const key =
+        Buffer.byteLength(k, 'utf8') > MAX_METADATA_STRING_BYTES
+          ? k.slice(0, MAX_METADATA_STRING_BYTES)
+          : k;
+      out[key] = chunkMetadataStrings(v);
+    }
+    return out;
+  }
+  return value;
+}
+
+export async function buildTxWithMetadata(
+  metadata: object,
+  label = 674
+): Promise<string> {
+  const { submitterSkey, submitterAddress, network } = getCardanoEnv();
+  const provider = getBlockfrostProvider();
+  const protocolParameters = await provider.fetchProtocolParameters();
+
+  const builder = new MeshTxBuilder({
+    fetcher: provider,
+    submitter: provider,
+    params: protocolParameters,
+  });
+
+  const utxos = await provider.fetchAddressUTxOs(submitterAddress);
+  if (!utxos || utxos.length === 0) {
+    throw new Error(`No UTXOs found for submitter address ${submitterAddress}`);
+  }
+
+  builder.setNetwork(network);
+  builder.changeAddress(submitterAddress);
+  builder.metadataValue(label, chunkMetadataStrings(metadata) as object);
+  builder.selectUtxosFrom(utxos);
+
+  const txHex = await builder.complete();
+
+  const wallet = new MeshWallet({
+    networkId: network === 'mainnet' ? 1 : 0,
+    key: {
+      type: 'cli',
+      payment: submitterSkey,
+    },
+    fetcher: provider,
+    submitter: provider,
+  });
+
+  if (wallet.init) {
+    await wallet.init();
+  }
+
+  const signedTx = await wallet.signTx(txHex);
+  const txHash = await wallet.submitTx(signedTx);
+
+  if (!txHash || typeof txHash !== 'string') {
+    throw new Error('Cardano transaction submission failed to return a tx hash');
+  }
+
+  return txHash;
+}
+
+export async function fetchTxDetails(txHash: string): Promise<{ blockNumber: number; fee: number } | null> {
+  try {
+    const tx = await getBlockfrostClient().txs(txHash);
+    if (typeof tx.block_height === 'number') {
+      return {
+        blockNumber: tx.block_height,
+        fee: parseInt(tx.fees, 10),
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Unable to fetch Blockfrost tx info for', txHash, error);
+    return null;
+  }
+}
+

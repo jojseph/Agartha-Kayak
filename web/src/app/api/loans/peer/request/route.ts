@@ -1,0 +1,62 @@
+import { NextResponse } from 'next/server';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { verifyAddressAuth } from '@/lib/auth';
+
+export async function POST(request: Request) {
+    const auth = await verifyAddressAuth(request);
+    if (auth instanceof NextResponse) return auth;
+
+    try {
+        const { borrowerAddress, lenderAddress, mode, amount, itemName, date, time, purpose } = await request.json();
+
+        if (!borrowerAddress || !lenderAddress || !purpose) {
+            return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+        }
+
+        if (borrowerAddress !== auth.walletAddress) {
+            return NextResponse.json({ error: 'borrowerAddress must match the signing wallet' }, { status: 403 });
+        }
+
+        if (mode === 'money' && (!amount || amount <= 0)) {
+            return NextResponse.json({ error: 'Amount is required for money loans' }, { status: 400 });
+        }
+
+        if (mode === 'things' && !itemName) {
+            return NextResponse.json({ error: 'Item name is required for things loans' }, { status: 400 });
+        }
+
+        const { data, error } = await supabaseAdmin
+            .from('loans')
+            .insert([
+                {
+                    borrower_address: borrowerAddress,
+                    lender_address: lenderAddress,
+                    loan_type: 'peer',
+                    mode: mode,
+                    amount: mode === 'money' ? amount : 0,
+                    item_name: mode === 'things' ? itemName : null,
+                    currency: 'PHP',
+                    purpose: purpose,
+                    needed_by_date: date || null,
+                    needed_by_time: time || null,
+                    status: 'pending',
+                },
+            ])
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Insert peer loan request error:', error);
+            return NextResponse.json({
+                error: 'Failed to record loan request in the ledger.',
+                detail: error.message,
+                code: error.code,
+            }, { status: 500 });
+        }
+
+        return NextResponse.json({ success: true, loan: data });
+    } catch (err: any) {
+        console.error('Server error creating peer loan request:', err);
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
+}
