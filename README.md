@@ -1,28 +1,62 @@
-# Agartha Kayak
+<div align="center">
+  <img src="web/public/logo.png" alt="Agartha Kayak logo" width="140" />
 
-Agartha Kayak is a blockchain-witnessed cooperative ledger for community credit groups. It helps cooperatives record memberships, loan requests, approvals, repayments, treasury activity, and public ledger events while keeping funds fully off-platform.
+  <h1>Agartha Kayak</h1>
 
-The application does not custody money. Members and elders continue to move funds in the real world; Agartha records the activity as a transparent digital ledger and can publish compact receipts to Cardano for tamper-resistant auditability.
+  <p>
+    <strong>A blockchain-witnessed cooperative ledger for community credit groups.</strong>
+  </p>
+
+  <p>
+    Record member activity, loan approvals, treasury movement, repayments, and public audit events without taking custody of community funds.
+  </p>
+
+  <p>
+    <img src="https://img.shields.io/badge/Next.js-14-black?style=for-the-badge&logo=nextdotjs" alt="Next.js 14" />
+    <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+    <img src="https://img.shields.io/badge/Supabase-Postgres-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white" alt="Supabase" />
+    <img src="https://img.shields.io/badge/Cardano-Preprod-0033AD?style=for-the-badge&logo=cardano&logoColor=white" alt="Cardano Preprod" />
+    <img src="https://img.shields.io/badge/License-ISC-blue?style=for-the-badge" alt="ISC License" />
+  </p>
+</div>
+
+## Overview
+
+Agartha Kayak is a full-stack Next.js application for cooperatives that need transparent records around community credit. It supports member registration, role-aware dashboards, peer and treasury loan flows, elder approvals, repayment tracking, public records, and optional Cardano metadata receipts.
+
+The platform is intentionally non-custodial. Money still moves through the cooperative's existing real-world process; Agartha Kayak records what happened, who approved it, and what should be visible to the community.
+
+## Why It Exists
+
+Small cooperatives often rely on trust, notebooks, spreadsheets, and verbal approvals. Agartha Kayak gives those groups a shared digital record with clear permissions and audit trails.
+
+| Problem | Agartha Kayak approach |
+| --- | --- |
+| Loan decisions are hard to audit | Elder approvals and rejections are recorded with wallet-authenticated actions |
+| Treasury activity can become unclear | Treasury requests, balances, gas proposals, and reconciliations are tracked |
+| Members need visibility | Public records expose cooperative activity without revealing unnecessary private data |
+| Blockchain records are expensive to write one by one | Worker queues batch compact metadata receipts to Cardano preprod |
 
 ## Features
 
 - Wallet-based onboarding and authentication with Lace and Mesh SDK
 - Role-aware dashboards for members, elders, owners, and platform administrators
-- Peer and treasury loan request flows
-- Elder approval workflows for loans, member registration, treasury changes, and gas top-ups
-- Public records view for cooperative activity
+- Peer-to-peer and treasury-backed loan request flows
+- Elder approval workflows for loans, membership, treasury changes, and gas top-ups
+- Public cooperative record board with privacy-aware visibility controls
 - Supabase-backed API routes for members, communities, treasury, loans, and worker queues
-- Cardano preprod integration through Blockfrost
+- Cardano preprod metadata receipts through Blockfrost
+- Local worker for queue processing and on-chain batch submission
+- Vitest coverage for auth and balance operation behavior
 
 ## Tech Stack
 
-| Area | Technology |
+| Layer | Tools |
 | --- | --- |
-| Framework | Next.js 14 App Router |
-| Language | TypeScript |
-| UI | React, Tailwind CSS, Framer Motion, Lucide React, Recharts |
+| Application | Next.js 14 App Router, React 18, TypeScript |
+| Styling | Tailwind CSS, Framer Motion, Lucide React, Recharts |
 | Database | Supabase Postgres |
-| Wallet | Mesh SDK, Lace wallet |
+| Wallet | Lace, Mesh SDK |
 | Blockchain | Cardano preprod, Blockfrost |
 | Testing | Vitest |
 | Tooling | ESLint, Husky, Commitlint, Commitizen |
@@ -60,7 +94,7 @@ Agartha-Kayak/
 - Blockfrost project ID for Cardano preprod
 - Lace wallet configured for Cardano preprod
 
-### Install
+### Installation
 
 Install root tooling:
 
@@ -68,26 +102,28 @@ Install root tooling:
 npm install
 ```
 
-Install the Next.js app:
+Install the application dependencies:
 
 ```bash
 cd web
 npm install
 ```
 
-### Environment Variables
+### Environment
 
-Create `web/.env.local` from `web/.env.example` and provide the required values:
+Create `web/.env.local` from `web/.env.example`, then fill in the required values:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 BLOCKFROST_PROJECT_ID=your-preprod-blockfrost-project-id
+CARDANO_SUBMITTER_SKEY=your-preprod-signing-key
+CARDANO_SUBMITTER_ADDRESS=addr_test1...
 WORKER_TRIGGER_SECRET=your-worker-secret
 ```
 
-The live Supabase project is the database source of truth for this repository. Schema inspection and updates are handled directly through Supabase and the configured MCP server.
+The live Supabase project is the database source of truth. Schema inspection and updates are handled through Supabase and the configured MCP server.
 
 ### Development
 
@@ -105,14 +141,18 @@ cd web
 npm run dev:next
 ```
 
-Run only the local worker:
+Run only the local Cardano worker:
 
 ```bash
 cd web
 npm run dev:worker
 ```
 
-The app runs at `http://localhost:3000`.
+The application runs at:
+
+```text
+http://localhost:3000
+```
 
 ## Scripts
 
@@ -121,12 +161,12 @@ From `web/`:
 | Command | Description |
 | --- | --- |
 | `npm run dev` | Start Next.js and the local worker |
-| `npm run dev:next` | Start only the Next.js dev server |
+| `npm run dev:next` | Start only the Next.js development server |
 | `npm run dev:worker` | Start only the local Cardano sync worker |
 | `npm run build` | Create a production build |
 | `npm run start` | Start the production server |
 | `npm run lint` | Run Next.js lint checks |
-| `npm run test` | Run Vitest tests |
+| `npm run test` | Run the Vitest suite |
 | `npm run test:watch` | Run Vitest in watch mode |
 
 From the repository root:
@@ -149,7 +189,7 @@ From the repository root:
 | `/admin` | Platform administration |
 | `/admin/applications` | SuperUser application review |
 
-## Verification
+## Quality Checks
 
 Run tests:
 
@@ -165,12 +205,30 @@ cd web
 npm run build
 ```
 
-## Security Notes
+## Security Model
 
 - Server-side Supabase operations use `SUPABASE_SERVICE_ROLE_KEY`; never expose it in client code.
 - Wallet-signed write requests prove wallet ownership before protected mutations.
+- The application records cooperative activity but does not custody funds.
 - Local environment files such as `.env.local` are intentionally ignored by Git.
+- Cardano metadata submissions should use a funded preprod wallet with limited operational scope.
+
+## Contributing
+
+Contributions should use conventional commit messages. The repository includes Commitizen, Commitlint, and Husky to keep commit history readable.
+
+```bash
+npm run commit
+```
+
+Before opening or merging changes, run:
+
+```bash
+cd web
+npm run test
+npm run build
+```
 
 ## License
 
-This project is currently licensed under the ISC license.
+This project is licensed under the ISC license.
