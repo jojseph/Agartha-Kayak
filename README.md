@@ -12,13 +12,14 @@
   </p>
 
   <p>
-    <img src="https://img.shields.io/badge/Next.js-14-111827?style=flat-square&logo=nextdotjs&logoColor=white" alt="Next.js 14" />
-    <img src="https://img.shields.io/badge/React-18-2563EB?style=flat-square&logo=react&logoColor=white" alt="React 18" />
-    <img src="https://img.shields.io/badge/Tailwind_CSS-3.4-0891B2?style=flat-square&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
-    <img src="https://img.shields.io/badge/TypeScript-5-1D4ED8?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
-    <img src="https://img.shields.io/badge/Supabase-Postgres-16A34A?style=flat-square&logo=supabase&logoColor=white" alt="Supabase" />
-    <img src="https://img.shields.io/badge/Cardano-Preprod-1E40AF?style=flat-square&logo=cardano&logoColor=white" alt="Cardano Preprod" />
-    <img src="https://img.shields.io/badge/License-ISC-374151?style=flat-square" alt="ISC License" />
+    <img src="https://img.shields.io/badge/-NEXT.JS-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" alt="Next.js" />
+    <img src="https://img.shields.io/badge/-REACT-2563EB?style=for-the-badge&logo=react&logoColor=white" alt="React" />
+    <img src="https://img.shields.io/badge/-TAILWIND_CSS-0891B2?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
+    <img src="https://img.shields.io/badge/-TYPESCRIPT-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+    <img src="https://img.shields.io/badge/-SUPABASE-16A34A?style=for-the-badge&logo=supabase&logoColor=white" alt="Supabase" />
+    <img src="https://img.shields.io/badge/-CARDANO-1E40AF?style=for-the-badge&logo=cardano&logoColor=white" alt="Cardano" />
+    <img src="https://img.shields.io/badge/-NODE.JS-15803D?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js" />
+    <img src="https://img.shields.io/badge/-VITEST-6E9F18?style=for-the-badge&logo=vitest&logoColor=white" alt="Vitest" />
   </p>
 </div>
 
