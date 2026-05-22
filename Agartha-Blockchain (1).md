@@ -78,7 +78,7 @@ The loan lifecycle follows these states:
 
 * Rejected — the Loaner declined the request
 
-* Ongoing — the Loaner approved; the Witness record is now active on-chain
+* Active — the Loaner approved; the Witness record is now active on-chain
 
 * Valid — manually confirmed by the Loaner once the item or debt has been returned
 
@@ -108,7 +108,7 @@ Key terms and protections:
 
 The extended loan lifecycle for Treasury Loans:
 
-**Status Flow:** *Pending → Approved → Ongoing → Fully Paid  OR  Overdue  OR  Defaulted*
+**Status Flow:** *Pending → Approved → Active → Fully Paid  OR  Overdue  OR  Defaulted*
 
 Email and dashboard notifications are sent to the borrower when a repayment is due, overdue, or when the loan status changes.
 
