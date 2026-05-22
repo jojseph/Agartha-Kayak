@@ -25,6 +25,10 @@ export async function GET(request: Request) {
         const role = member.role;
         const activities: any[] = [];
 
+        // Fetch alias map for populating names
+        const { data: allMembers } = await supabaseAdmin.from('members').select('wallet_address, alias');
+        const aliasMap = Object.fromEntries((allMembers || []).map((m: any) => [m.wallet_address, m.alias]));
+
         // 1. LOANS — borrower's own loans
         const { data: borrowedLoans } = await supabaseAdmin
             .from('loans')
@@ -66,10 +70,14 @@ export async function GET(request: Request) {
                     mode: loan.mode,
                     lenderAddress: loan.lender_address,
                     borrowerAddress: loan.borrower_address,
+                    lenderAlias: aliasMap[loan.lender_address],
+                    borrowerAlias: aliasMap[loan.borrower_address],
                     itemName: loan.item_name,
                     collateral: loan.collateral,
                     termMonths: loan.term_months,
                     repaymentFrequency: loan.repayment_frequency,
+                    neededByDate: loan.needed_by_date,
+                    neededByTime: loan.needed_by_time,
                     totalRepaid: loan.loan_type === 'treasury' ? totalRepaid : undefined,
                     remainingBalance: loan.loan_type === 'treasury' ? remainingBalance : undefined,
                     actorRole: 'member',
@@ -99,7 +107,11 @@ export async function GET(request: Request) {
                     mode: loan.mode,
                     lenderAddress: loan.lender_address,
                     borrowerAddress: loan.borrower_address,
+                    lenderAlias: aliasMap[loan.lender_address],
+                    borrowerAlias: aliasMap[loan.borrower_address],
                     itemName: loan.item_name,
+                    neededByDate: loan.needed_by_date,
+                    neededByTime: loan.needed_by_time,
                     isLender: true,
                     actorRole: 'member',
                     createdAt: loan.created_at,
@@ -110,16 +122,17 @@ export async function GET(request: Request) {
         // 2. REPAYMENTS — as borrower
         const { data: repaymentsPayer } = await supabaseAdmin
             .from('repayments')
-            .select('*')
+            .select('*, loans(purpose)')
             .eq('payer_address', address);
         
         if (repaymentsPayer) {
             repaymentsPayer.forEach(rep => {
+                const loan = Array.isArray(rep.loans) ? rep.loans[0] : rep.loans;
                 activities.push({
                     id: `rep_p_${rep.repayment_id}`,
                     type: 'repayment_submitted',
                     title: 'Repayment Confirmed',
-                    description: `Repayment confirmed via ${rep.method || 'cash'}`,
+                    description: `Repayment for ${loan?.purpose || 'loan'} via ${rep.method || 'cash'}`,
                     status: rep.status,
                     amount: rep.amount,
                     currency: 'PHP',
@@ -134,7 +147,7 @@ export async function GET(request: Request) {
             // 3. TREASURY LOAN VOTES
             const { data: treasuryVotes } = await supabaseAdmin
                 .from('treasury_loan_votes')
-                .select('*, loans (purpose, amount)')
+                .select('*, loans (purpose, amount, borrower_address)')
                 .eq('elder_address', address);
             
             if (treasuryVotes) {
@@ -146,6 +159,8 @@ export async function GET(request: Request) {
                         title: 'Voted on Treasury Loan',
                         description: `Voted to ${vote.vote} loan for ${loan?.purpose || 'treasury'}`,
                         status: vote.vote === 'approve' ? 'Approved' : 'Rejected',
+                        amount: loan?.amount,
+                        borrowerAlias: aliasMap[loan?.borrower_address],
                         referenceId: vote.loan_id,
                         actorRole: role,
                         createdAt: vote.created_at,
@@ -156,19 +171,21 @@ export async function GET(request: Request) {
             // 4. REPAYMENT CONFIRMATIONS
             const { data: confirmedRepayments } = await supabaseAdmin
                 .from('repayments')
-                .select('*')
+                .select('*, loans(purpose, borrower_address)')
                 .eq('confirmed_by', address);
             
             if (confirmedRepayments) {
                 confirmedRepayments.forEach(rep => {
+                    const loan = Array.isArray(rep.loans) ? rep.loans[0] : rep.loans;
                     activities.push({
                         id: `rep_c_${rep.repayment_id}`,
                         type: 'repayment_confirmed',
                         title: 'Confirmed Repayment',
-                        description: `Confirmed repayment of amount ${rep.amount}`,
+                        description: `Confirmed repayment for ${loan?.purpose || 'loan'}`,
                         status: rep.status,
                         amount: rep.amount,
                         currency: 'PHP',
+                        borrowerAlias: aliasMap[loan?.borrower_address],
                         referenceId: rep.repayment_id,
                         actorRole: role,
                         createdAt: rep.confirmed_at || rep.repaid_at || new Date().toISOString(),
@@ -191,6 +208,7 @@ export async function GET(request: Request) {
                         title: 'Signed Reconciliation',
                         description: `Signed to ${sig.decision} reconciliation: ${recon?.reason || ''}`,
                         status: sig.decision === 'approve' ? 'Approved' : 'Rejected',
+                        amount: recon?.proposed_balance,
                         referenceId: sig.reconciliation_id,
                         actorRole: role,
                         createdAt: sig.signed_at,
@@ -215,6 +233,7 @@ export async function GET(request: Request) {
                                : 'Rejected New Member',
                         description: queue.summary,
                         status: queue.record_type.includes('approved') ? 'Approved' : 'Rejected',
+                        borrowerAlias: queue.record_type.includes('member') ? aliasMap[queue.reference_id] : undefined,
                         referenceId: queue.reference_id,
                         actorRole: role,
                         createdAt: queue.created_at,
