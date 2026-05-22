@@ -127,7 +127,7 @@ export default function AgarthaLanding() {
             className="text-[15px] md:text-base text-gray-500 mb-10 max-w-2xl mx-auto font-normal leading-relaxed animate-fade-in-up"
             style={{ animationDelay: '0.4s' }}
           >
-            A highly secure, digital community piggy bank replacing easily damaged paper records for local neighborhood cooperatives.
+            An immutable, blockchain-witnessed cooperative ledger replacing easily damaged paper records for local neighborhood groups.
           </p>
 
           {/* Primary CTA */}

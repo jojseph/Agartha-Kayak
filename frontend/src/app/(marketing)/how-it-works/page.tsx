@@ -83,7 +83,6 @@ export default function HowItWorks() {
             <div className="hidden md:flex items-center gap-8">
               {[
                 { name: 'How It Works', path: '/how-it-works' },
-                { name: 'Public Records', path: '#' },
                 { name: 'FAQ', path: '/faq' }
               ].map((link) => (
                 <Link
@@ -120,7 +119,7 @@ export default function HowItWorks() {
               </span>
             </h1>
             <p className="text-[16px] md:text-lg text-gray-700 leading-relaxed font-medium">
-              A digital community piggy bank and record book designed for local neighborhood groups (Barangay Cooperatives). It replaces easily damaged or lost paper record books with a highly secure, digital system where neighbors can pool their money together.
+              An immutable, blockchain-witnessed cooperative ledger designed for local neighborhood groups (Barangay Cooperatives). It replaces easily damaged or lost paper record books with a highly secure, digital system where neighbors can record their community transactions transparently.
             </p>
           </div>
 
