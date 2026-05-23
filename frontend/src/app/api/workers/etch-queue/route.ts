@@ -1,80 +1,75 @@
 import { NextResponse } from 'next/server';
-import { submitBatchForCommunity } from '@/lib/cardano/submitBatch';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { enqueueReceipt } from '@/lib/enqueueReceipt';
 
-async function loadVerifier() {
-  const devMode = process.env.NODE_ENV !== 'production' || process.env.DEV_AUTH === 'true';
+const DEFAULT_GRACE_DAYS = 60;
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-  if (devMode) {
-    try {
-      const dev = await import('@/lib/auth.dev');
-      return dev.verifyWalletAuth;
-    } catch {
-      // continue to real auth if dev stub is unavailable
-    }
-  }
-
-  try {
-    const mod = await import('@/lib/auth');
-    return mod.verifyWalletAuth;
-  } catch (e) {
-    if (devMode) {
-      try {
-        const dev = await import('@/lib/auth.dev');
-        return dev.verifyWalletAuth;
-      } catch {
-        // fall through
-      }
-    }
-
-    return null;
-  }
+function estimatePayloadBytes(payload: object) {
+  return Buffer.byteLength(JSON.stringify(payload), 'utf8');
 }
 
-type WorkerRequestBody = {
-  communityId?: string;
-};
-
 export async function POST(request: Request) {
-  try {
-    const verifyWalletAuth = await loadVerifier();
-    let authContext: any = null;
-    let authorizedViaSecret = false;
+  // 1) Worker Ingress Token Authentication Gate (ADR-003 Compliance)
+  const authHeader = request.headers.get('Authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  const workerSecret = process.env.WORKER_TRIGGER_SECRET;
 
-    if (verifyWalletAuth) {
-      try {
-        authContext = await verifyWalletAuth(request, { role: ['superuser'] });
-      } catch {
-        // fall through to worker secret check
-      }
-    }
-
-    if (!authContext) {
-      const authHeader = request.headers.get('Authorization');
-      if (authHeader !== process.env.WORKER_TRIGGER_SECRET) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-      authorizedViaSecret = true;
-    }
-
-    const body = (await request.json().catch(() => ({}))) as WorkerRequestBody;
-    const communityId = authContext?.communityId ?? body.communityId;
-
-    if (!communityId) {
-      return NextResponse.json(
-        { error: 'Missing communityId in request body or auth context' },
-        { status: 400 }
-      );
-    }
-
-    const result = await submitBatchForCommunity(communityId);
-
-    return NextResponse.json({ success: true, authorizedViaSecret, result });
-  } catch (error) {
-    console.error('etch-queue worker failed', error);
-    const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json(
-      { error: 'Internal server error', details: message },
-      { status: 500 }
-    );
+  if (!workerSecret || token !== workerSecret) {
+    return NextResponse.json({ error: 'Unauthorized worker action' }, { status: 401 });
   }
+
+  const now = new Date();
+  const thresholdDate = new Date(now.getTime() - DEFAULT_GRACE_DAYS * MS_PER_DAY);
+  const thresholdIso = thresholdDate.toISOString();
+  const nowIso = now.toISOString();
+
+  // 2) Self-healing target collection: includes both active and overdue breaches
+  const { data: loans, error } = await supabaseAdmin
+    .from('loans')
+    .select('*')
+    .in('status', ['active', 'overdue'])
+    .lte('needed_by_date', thresholdIso);
+
+  if (error) {
+    console.error('Defaulted cron lookup failed:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  let defaultedCount = 0;
+
+  for (const loan of loans || []) {
+    const { error: updateError } = await supabaseAdmin
+      .from('loans')
+      .update({
+        status: 'defaulted',
+      })
+      .eq('loan_id', loan.loan_id);
+
+    if (updateError) {
+      console.error(`Failed to default loan ${loan.loan_id}:`, updateError);
+      continue;
+    }
+
+    const payload = {
+      loanId: loan.loan_id,
+      borrower: loan.borrower_address,
+      dueDate: loan.needed_by_date,
+      defaultedAt: nowIso,
+    };
+
+    // Uniform system receipt queue invocation
+    await enqueueReceipt({
+      communityId: loan.community_id,
+      recordType: 'loan_defaulted',
+      referenceId: loan.loan_id,
+      memberAddress: loan.borrower_address || 'system',
+      summary: `Loan ${loan.loan_id} permanently moved to Defaulted state (breached 60-day threshold).`,
+      estimatedBytes: estimatePayloadBytes(payload),
+    });
+
+    defaultedCount++;
+  }
+
+  return NextResponse.json({ defaulted: defaultedCount });
 }

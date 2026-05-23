@@ -5,11 +5,12 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
  * Called by API routes after a key community action succeeds
  * (loan approval, vote, repayment confirmation, share capital, reconciliation).
  *
- * This entry represents a "receipt" that should eventually be etched on-chain.
+ * This entry represents a \"receipt\" that should eventually be etched on-chain.
  */
 export async function enqueueReceipt(params: {
     communityId: string;
-    recordType: 'loan_approved' | 'loan_rejected' | 'vote_cast' | 'repayment_confirmed' | 'share_capital' | 'reconciliation_approved' | 'peer_loan_approved' | 'peer_loan_settled';
+    // EXTENDED: Added 'loan_overdue' and 'loan_defaulted' to satisfy Task 3.9
+    recordType: 'loan_approved' | 'loan_rejected' | 'vote_cast' | 'repayment_confirmed' | 'share_capital' | 'reconciliation_approved' | 'peer_loan_approved' | 'peer_loan_settled' | 'loan_overdue' | 'loan_defaulted';
     referenceId: string;
     memberAddress: string;
     summary: string;
@@ -33,6 +34,6 @@ export async function enqueueReceipt(params: {
             console.error('Failed to enqueue receipt:', error.message);
         }
     } catch (err) {
-        console.error('enqueueReceipt error:', err);
+        console.error('Unexpected queue error:', err);
     }
 }

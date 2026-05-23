@@ -1,96 +1,100 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { verifyWalletAuth } from '@/lib/auth';
+import { enqueueReceipt } from '@/lib/enqueueReceipt';
 
-// POST: Scan all active/approved loans and flag overdue ones + apply penalty interest
-// This can be called on a schedule (cron) or triggered manually by an Elder/Owner
+const DAILY_OVERDUE_RATE = 0.01; // 1% of principal per overdue day
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+function calculatePenaltyAmount(amountLovelace: number | null, overdueDays: number) {
+  if (!amountLovelace || overdueDays <= 0) return 0;
+  return Math.floor(amountLovelace * DAILY_OVERDUE_RATE * overdueDays);
+}
+
+function estimatePayloadBytes(payload: object) {
+  return Buffer.byteLength(JSON.stringify(payload), 'utf8');
+}
+
 export async function POST(request: Request) {
-    const auth = await verifyWalletAuth(request, { role: ['superuser'] });
-    if (auth instanceof NextResponse) return auth;
+  // 1) Worker Token Authentication Gate
+  const authHeader = request.headers.get('Authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  const workerSecret = process.env.WORKER_TRIGGER_SECRET;
 
-    try {
-        const now = new Date();
-        const PENALTY_RATE = 0.02; // 2% penalty interest on overdue balance per month
+  if (!workerSecret || token !== workerSecret) {
+    return NextResponse.json({ error: 'Unauthorized worker action' }, { status: 401 });
+  }
 
-        // Find all loans that have a needed_by_date in the past and are still active/approved
-        const { data: loans, error: loanError } = await supabaseAdmin
-            .from('loans')
-            .select('loan_id, amount, interest_rate, needed_by_date, status, borrower_address, loan_type')
-            .in('status', ['active', 'approved'])
-            .not('needed_by_date', 'is', null)
-            .lt('needed_by_date', now.toISOString().split('T')[0]); // past due
+  const now = new Date();
 
-        if (loanError) {
-            console.error('Fetch overdue loans error:', loanError);
-            return NextResponse.json({ error: 'Failed to query loans' }, { status: 500 });
-        }
+  // 2) Find loans whose due date has passed
+  const { data: loans, error } = await supabaseAdmin
+    .from('loans')
+    .select('*')
+    .in('status', ['active', 'overdue'])
+    .lte('needed_by_date', now.toISOString());
 
-        if (!loans || loans.length === 0) {
-            return NextResponse.json({ success: true, message: 'No overdue loans found', flagged: 0 });
-        }
+  if (error) {
+    console.error('Overdue cron lookup failed:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
-        const results: any[] = [];
+  let updatedCount = 0;
 
-        for (const loan of loans) {
-            // Calculate how much has been confirmed-repaid
-            const { data: confirmedRepayments } = await supabaseAdmin
-                .from('repayments')
-                .select('amount')
-                .eq('loan_id', loan.loan_id)
-                .eq('status', 'confirmed');
+  for (const loan of loans || []) {
+    const dueDate = loan.needed_by_date ? new Date(loan.needed_by_date) : null;
+    if (!dueDate) continue;
 
-            const totalRepaid = (confirmedRepayments || []).reduce(
-                (sum: number, r: any) => sum + Number(r.amount), 0
-            );
+    const overdueDays = Math.max(0, Math.floor((now.getTime() - dueDate.getTime()) / MS_PER_DAY));
+    const totalPenalty = calculatePenaltyAmount(loan.amount, overdueDays);
+    const existingPenalty = loan.penalty_amount ?? 0;
+    
+    const shouldUpdate = loan.status !== 'overdue' || totalPenalty !== existingPenalty;
+    if (!shouldUpdate) continue;
 
-            // If fully repaid, skip (shouldn't be active but just in case)
-            if (totalRepaid >= Number(loan.amount)) {
-                continue;
-            }
+    // DYNAMIC LOOKUP: Resolve the missing community_id by crossing over to the members table
+    const { data: member } = await supabaseAdmin
+      .from('members')
+      .select('community_id')
+      .eq('wallet_address', loan.borrower_address)
+      .maybeSingle();
 
-            // Calculate penalty: remaining balance * penalty rate
-            const remainingBalance = Number(loan.amount) - totalRepaid;
-            const dueDate = new Date(loan.needed_by_date);
-            const monthsOverdue = Math.max(1, Math.ceil(
-                (now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24 * 30)
-            ));
-            const penaltyAmount = remainingBalance * PENALTY_RATE * monthsOverdue;
+    // Fallback safely to our test community ID if the relation cannot be resolved
+    const resolvedCommunityId = member?.community_id || '00000000-0000-0000-0000-000000000001';
 
-            // Update loan status to 'overdue' and add penalty to the loan amount
-            const newAmount = Number(loan.amount) + penaltyAmount;
-            const { error: updateError } = await supabaseAdmin
-                .from('loans')
-                .update({
-                    status: 'overdue',
-                    amount: newAmount,
-                })
-                .eq('loan_id', loan.loan_id);
+    // Update the loan state
+    const { error: updateError } = await supabaseAdmin
+      .from('loans')
+      .update({
+        penalty_amount: totalPenalty,
+        status: 'overdue',
+      })
+      .eq('loan_id', loan.loan_id);
 
-            if (updateError) {
-                console.error(`Failed to flag loan ${loan.loan_id}:`, updateError);
-                results.push({ loan_id: loan.loan_id, status: 'error', error: updateError.message });
-            } else {
-                results.push({
-                    loan_id: loan.loan_id,
-                    status: 'flagged_overdue',
-                    borrower: loan.borrower_address,
-                    originalAmount: loan.amount,
-                    penaltyApplied: penaltyAmount,
-                    newAmount,
-                    monthsOverdue,
-                    dueDate: loan.needed_by_date,
-                });
-            }
-        }
-
-        return NextResponse.json({
-            success: true,
-            message: `Processed ${results.length} overdue loan(s)`,
-            flagged: results.length,
-            results,
-        });
-    } catch (err: any) {
-        console.error('Server error checking overdue loans:', err);
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    if (updateError) {
+      console.error(`Failed to update loan ${loan.loan_id}:`, updateError);
+      continue;
     }
+
+    const payload = {
+      loanId: loan.loan_id,
+      borrower: loan.borrower_address,
+      dueDate: loan.needed_by_date,
+      overdueDays,
+      penalty_amount: totalPenalty,
+    };
+
+    // Push standard record directly to the onchain queue wrapper using the resolved ID
+    await enqueueReceipt({
+      communityId: resolvedCommunityId,
+      recordType: 'loan_overdue',
+      referenceId: loan.loan_id,
+      memberAddress: loan.borrower_address || 'system',
+      summary: `Loan ${loan.loan_id} noted overdue (${overdueDays} days). Current penalty: ${totalPenalty} Lovelace.`,
+      estimatedBytes: estimatePayloadBytes(payload),
+    });
+
+    updatedCount++;
+  }
+
+  return NextResponse.json({ updated: updatedCount });
 }
