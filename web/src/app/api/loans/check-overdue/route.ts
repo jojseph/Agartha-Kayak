@@ -3,16 +3,29 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { verifyAddressAuth } from '@/lib/auth';
 
 export async function POST(request: Request) {
-    const auth = await verifyAddressAuth(request, { role: ['elder', 'owner', 'superuser'] });
+    const auth = await verifyAddressAuth(request, { role: ['elder', 'owner'] });
     if (auth instanceof NextResponse) return auth;
 
     try {
+        if (!auth.communityId) {
+            return NextResponse.json({ error: 'Community membership is required' }, { status: 400 });
+        }
+
         const now = new Date();
         const PENALTY_RATE = 0.02;
 
         const { data: loans, error: loanError } = await supabaseAdmin
             .from('loans')
-            .select('loan_id, amount, interest_rate, needed_by_date, status, borrower_address, loan_type')
+            .select(`
+                loan_id,
+                amount,
+                interest_rate,
+                needed_by_date,
+                status,
+                borrower_address,
+                loan_type,
+                borrower:members!loans_borrower_address_fkey(community_id)
+            `)
             .in('status', ['active', 'approved'])
             .eq('loan_type', 'treasury')
             .not('needed_by_date', 'is', null)
@@ -23,13 +36,18 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Failed to query loans' }, { status: 500 });
         }
 
-        if (!loans || loans.length === 0) {
+        const communityLoans = (loans || []).filter((loan: any) => {
+            const borrower = Array.isArray(loan.borrower) ? loan.borrower[0] : loan.borrower;
+            return borrower?.community_id === auth.communityId;
+        });
+
+        if (communityLoans.length === 0) {
             return NextResponse.json({ success: true, message: 'No overdue loans found', flagged: 0 });
         }
 
         const results: any[] = [];
 
-        for (const loan of loans) {
+        for (const loan of communityLoans) {
 
             const { data: confirmedRepayments } = await supabaseAdmin
                 .from('repayments')
