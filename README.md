@@ -192,7 +192,6 @@ From the repository root:
 | `/walletAuth` | Wallet connection and registration |
 | `/dashboard` | Main role-aware user dashboard |
 | `/admin` | Platform administration |
-| `/admin/applications` | SuperUser application review |
 
 ## Quality Checks
 
