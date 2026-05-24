@@ -149,6 +149,7 @@ const initialsOf = (name: string) => {
 
 const fmtPeso = (n: number) => `₱ ${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtPesoShort = (n: number) => `₱ ${Number(n).toLocaleString('en-PH', { maximumFractionDigits: 0 })}`;
+const fmtAda = (n: number) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 6 });
 const fmtDate = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 const paymentsPerMonth = (freq: Frequency) => {
@@ -449,10 +450,12 @@ export default function DashboardTestPage() {
 
   const [gasModalOpen, setGasModalOpen] = useState(false);
   const [gasList, setGasList] = useState<any[]>([]);
+  const [gasLoading, setGasLoading] = useState(false);
   const [gasProposing, setGasProposing] = useState(false);
   const [gasAmount, setGasAmount] = useState('');
   const [gasReason, setGasReason] = useState('');
   const [gasExecuting, setGasExecuting] = useState(false);
+  const [gasLoadError, setGasLoadError] = useState('');
   const [ownerConsoleModalOpen, setOwnerConsoleModalOpen] = useState(false);
 
   const [tAmount, setTAmount] = useState(0);
@@ -509,6 +512,47 @@ export default function DashboardTestPage() {
 
   const [nextBatchIn, setNextBatchIn] = useState(0);
   const [workerStatus, setWorkerStatus] = useState<WorkerStatus | null>(null);
+
+  const loadCommunityStats = async (walletAddress: string) => {
+    const res = await fetch(`/api/community/stats?address=${encodeURIComponent(walletAddress)}&t=${Date.now()}`, { cache: 'no-store' });
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to load community stats.');
+    }
+
+    if (data.treasuryBalance !== undefined) {
+      setCommunityStats({
+        treasuryBalance: data.treasuryBalance,
+        gasBalance: data.gasBalance,
+        activeLoanCount: data.activeLoanCount,
+        treasuryLoanCount: data.treasuryLoanCount,
+        peerLoanCount: data.peerLoanCount,
+      });
+    }
+
+    return data;
+  };
+
+  const loadGasProposals = async (walletAddress: string) => {
+    setGasLoadError('');
+    setGasLoading(true);
+    try {
+      const res = await fetch(`/api/treasury/gas/pending?address=${encodeURIComponent(walletAddress)}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to load gas top-up proposals.');
+      }
+
+      setGasList(data.proposals || []);
+    } catch (err: any) {
+      setGasList([]);
+      setGasLoadError(err?.message || 'Failed to load gas top-up proposals.');
+    } finally {
+      setGasLoading(false);
+    }
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -588,20 +632,7 @@ export default function DashboardTestPage() {
 
   useEffect(() => {
     if (address) {
-      fetch(`/api/community/stats?address=${address}`)
-        .then(r => r.json())
-        .then(d => {
-          if (d.treasuryBalance !== undefined) {
-            setCommunityStats({
-              treasuryBalance: d.treasuryBalance,
-              gasBalance: d.gasBalance,
-              activeLoanCount: d.activeLoanCount,
-              treasuryLoanCount: d.treasuryLoanCount,
-              peerLoanCount: d.peerLoanCount,
-            });
-          }
-        })
-        .catch(console.error);
+      loadCommunityStats(address).catch(console.error);
     }
   }, [address]);
 
@@ -925,21 +956,13 @@ export default function DashboardTestPage() {
                 <div className="elder-panel__body">
                   <div className="elder-panel__head">Gas Tank & Sync Network</div>
                   <div className="elder-panel__msg">
-                    Current balance: <strong>{communityStats.gasBalance} ADA</strong>. Propose top-ups to keep the background worker syncing.
+                    Current balance: <strong>{fmtAda(communityStats.gasBalance)} ADA</strong>. Propose top-ups to keep the background worker syncing.
                   </div>
                 </div>
                 <button className="elder-panel__cta" onClick={async () => {
                   if (!address) return;
-                  try {
-                    const res = await fetch(`/api/treasury/gas/pending?address=${address}`);
-                    if (res.ok) {
-                      const data = await res.json();
-                      setGasList(data.proposals || []);
-                    }
-                  } catch (err) {
-                    console.error(err);
-                  }
                   setGasModalOpen(true);
+                  await loadGasProposals(address);
                 }}>Manage Gas</button>
               </div>
             </>
@@ -1344,7 +1367,7 @@ export default function DashboardTestPage() {
             )}
           </div>
 
-          <div className="records">
+          <div className="records public-records">
             <div className="records__head">
               <div>
                 <h2 className="records__title">Public Record Board</h2>
@@ -2756,15 +2779,37 @@ export default function DashboardTestPage() {
                     <Database size={14} /> Propose Gas Top-Up
                   </button>
 
-                  {gasList.length === 0 && (
+                  {gasLoading && (
+                    <div className="elder-empty is-visible">
+                      <div className="elder-empty__icon"><span className="nq-spinner" style={{ width: 18, height: 18 }} /></div>
+                      <div className="elder-empty__title">Loading Gas Proposals</div>
+                      <div className="elder-empty__sub">Checking pending top-ups for this community.</div>
+                    </div>
+                  )}
+
+                  {!gasLoading && gasLoadError && (
+                    <div className="elder-empty is-visible">
+                      <div className="elder-empty__icon" style={{ color: '#b45309', background: 'rgba(245, 158, 11, 0.10)', borderColor: 'rgba(245, 158, 11, 0.24)' }}><Clock size={22} /></div>
+                      <div className="elder-empty__title">Could Not Load Gas Proposals</div>
+                      <div className="elder-empty__sub">{gasLoadError}</div>
+                      {address && (
+                        <button className="elder-empty__close" onClick={() => loadGasProposals(address)}>Retry</button>
+                      )}
+                    </div>
+                  )}
+
+                  {!gasLoading && !gasLoadError && gasList.length === 0 && (
                     <div className="elder-empty is-visible">
                       <div className="elder-empty__icon"><Check size={22} /></div>
                       <div className="elder-empty__title">Tank is Good</div>
                       <div className="elder-empty__sub">No pending gas top-ups required.</div>
+                      {address && (
+                        <button className="elder-empty__close" onClick={() => loadGasProposals(address)}>Refresh</button>
+                      )}
                     </div>
                   )}
 
-                  {gasList.map((g: any) => (
+                  {!gasLoading && !gasLoadError && gasList.map((g: any) => (
                     <div key={g.id} className={`pending-card ${g.status === 'approved' ? 'is-approved' : g.status === 'executed' ? 'is-executed' : ''}`} style={{ marginBottom: '12px' }}>
                       <div className="pending-card__top">
                         <div className="pending-card__requester">
@@ -2871,8 +2916,13 @@ export default function DashboardTestPage() {
                               if (res.ok) {
                                 setGasList(prev => prev.map(x => x.id === g.id ? { ...x, status: 'executed' } : x));
 
-                                fetch(`/api/community/stats?address=${address}`)
-                                  .then(r => r.json()).then(d => { if (d.treasuryBalance !== undefined) setCommunityStats(d); }).catch(console.error);
+                                const updatedBalance = Number(data.updatedBalance);
+                                if (Number.isFinite(updatedBalance)) {
+                                  setCommunityStats(prev => ({ ...prev, gasBalance: updatedBalance }));
+                                }
+                                if (address) {
+                                  loadCommunityStats(address).catch(console.error);
+                                }
                                 alert('Gas top-up executed! Transaction submitted to the blockchain. The worker will resume shortly.');
                               } else { alert(data.error || 'Execution failed on server'); }
                             } catch (err: any) {
@@ -2919,8 +2969,7 @@ export default function DashboardTestPage() {
                         setGasAmount('');
                         setGasReason('');
 
-                        const listRes = await fetch(`/api/treasury/gas/pending?address=${address}`);
-                        if (listRes.ok) { const d = await listRes.json(); setGasList(d.proposals || []); }
+                        if (address) await loadGasProposals(address);
                       } else { alert(data.error || 'Failed to propose'); }
                     }}>
                       <Database size={14} /> Submit Proposal
@@ -3254,6 +3303,8 @@ const CUSTOM_CSS = `
   .security-note__text { font-size: 12px; color: var(--text-2); line-height: 1.55; }
 
   .view--dashboard .container {
+    display: flex;
+    flex-direction: column;
     max-width: 1120px;
     margin: 0 auto;
     padding: 28px 32px 64px;
@@ -3430,6 +3481,10 @@ const CUSTOM_CSS = `
     overflow: hidden;
     box-shadow: 0 1px 0 rgba(255, 255, 255, 1) inset, 0 1px 2px rgba(0, 0, 0, 0.03);
   }
+  .public-records {
+    order: 20;
+    margin-bottom: 20px;
+  }
   .records__head {
     display: flex;
     align-items: center;
@@ -3534,6 +3589,7 @@ const CUSTOM_CSS = `
   .receipt-link:hover { border-color: var(--text); color: var(--text); background: var(--surface); }
 
   .app-footer {
+    order: 22;
     text-align: center;
     margin-top: 40px;
     padding: 24px 0 0;
@@ -3918,7 +3974,7 @@ const CUSTOM_CSS = `
   .tx-cardanoscan { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 13px 18px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600; transition: border-color 160ms, transform 160ms; }
   .tx-cardanoscan:hover { border-color: var(--text); background: var(--surface-2); transform: translateY(-1px); }
 
-  .network-queue { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; margin-bottom: 20px; overflow: hidden; }
+  .network-queue { order: 21; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; margin-bottom: 20px; overflow: hidden; }
   .network-queue__head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px 14px; gap: 12px; flex-wrap: wrap; }
   .network-queue__title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; color: var(--text); margin: 0; letter-spacing: -0.015em; }
   .network-queue__sub { font-size: 12px; color: var(--text-2); margin-top: 2px; }

@@ -18,7 +18,6 @@ export default function WalletAuthPage() {
   const [address, setAddress] = useState<string | null>(null);
   const [memberData, setMemberData] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState('');
-  const [session, setSession] = useState('');
 
   const [formState, setFormState] = useState<'idle' | 'animating' | 'success'>('idle');
   const [communities, setCommunities] = useState<any[]>([]);
@@ -27,8 +26,6 @@ export default function WalletAuthPage() {
   const [applicationReason, setApplicationReason] = useState('');
 
   useEffect(() => {
-    setSession(`agartha-kayak-${Date.now().toString(36)}`);
-
     fetch('/api/communities', { cache: 'no-store' })
       .then(res => res.json())
       .then(data => {
@@ -560,9 +557,6 @@ export default function WalletAuthPage() {
     );
   }
 
-  const qrData = `lace://connect?session=${session}`;
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qrData)}&ecc=H`;
-
   return (
     <div className="min-h-screen w-full bg-[#FAFAFA] text-[#0A0A0A] flex items-center justify-center p-4 sm:p-8 font-sans antialiased">
       <style>{`
@@ -647,36 +641,6 @@ export default function WalletAuthPage() {
                 </span>
               </button>
             </div>
-
-            <div className="flex items-center gap-3 my-7 text-[#9CA3AF] text-xs font-medium uppercase tracking-[0.08em] before:flex-1 before:h-[1px] before:bg-[#E5E5E2] after:flex-1 after:h-[1px] after:bg-[#E5E5E2]">
-              or scan with mobile
-            </div>
-
-            <div className="flex justify-center">
-              <div className="relative w-[200px] h-[200px] p-3 bg-white rounded-2xl border border-[#EFEFED] shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-                <Image
-                  src={qrCodeUrl}
-                  alt="QR Code"
-                  className="w-full h-full block"
-                  width={176}
-                  height={176}
-                  unoptimized
-                />
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[42px] h-[42px] rounded-lg bg-white p-1 shadow-[0_1px_4px_rgba(0,0,0,0.08)] flex items-center justify-center">
-                  <Image
-                    src="https://cardano.org/img/app-icons/lace.jpg"
-                    alt="Lace"
-                    className="w-full h-full object-cover rounded-[5px] bg-gradient-to-br from-[#FF8A4C] via-[#E73C7E] to-[#4F8DFF]"
-                    width={34}
-                    height={34}
-                    onError={(e) => e.currentTarget.removeAttribute('src')}
-                  />
-                </div>
-              </div>
-            </div>
-            <p className="mt-3.5 text-center text-[13px] text-[#6B7280] leading-[1.5]">
-              Scan with Lace mobile wallet
-            </p>
 
             <div className="mt-6 pt-5 border-t border-[#F0F0EE] text-center">
               <p className="text-[13px] font-medium text-[#6B7280]">

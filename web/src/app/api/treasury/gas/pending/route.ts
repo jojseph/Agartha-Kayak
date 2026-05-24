@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 
 export async function GET(request: Request) {
     try {
@@ -12,23 +13,28 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 });
         }
 
-        const { data: member, error: memberError } = await supabaseAdmin
+        const supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+        );
+
+        const { data: members, error: memberError } = await supabase
             .from('members')
             .select('community_id, role')
             .eq('wallet_address', address)
-            .single();
+            .in('role', ['elder', 'owner'])
+            .order('created_at', { ascending: false })
+            .limit(1);
 
-        if (memberError || !member || !['elder', 'owner'].includes(member.role)) {
+        const member = members?.[0];
+
+        if (memberError || !member) {
             return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
         }
 
-        const { data: proposals, error: propError } = await supabaseAdmin
+        const { data: proposals, error: propError } = await supabase
             .from('gas_topup_proposals')
-            .select(`
-                *,
-                signatures:gas_topup_signatures(count),
-                my_signature:gas_topup_signatures(signer_address)
-            `)
+            .select('*')
             .eq('community_id', member.community_id)
             .in('status', ['pending', 'approved'])
             .order('created_at', { ascending: false });
@@ -37,18 +43,29 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Database error' }, { status: 500 });
         }
 
-        const formatted = proposals.map(p => {
-            const hasSigned = p.my_signature.some((sig: any) => sig.signer_address === address);
+        const formatted = await Promise.all(proposals.map(async (p: any) => {
+            const { count } = await supabase
+                .from('gas_topup_signatures')
+                .select('*', { count: 'exact', head: true })
+                .eq('proposal_id', p.id);
+
+            const { data: mySigs } = await supabase
+                .from('gas_topup_signatures')
+                .select('signer_address')
+                .eq('proposal_id', p.id)
+                .eq('signer_address', address);
+
             return {
                 ...p,
-                has_signed: hasSigned,
-                signature_count: p.signatures[0]?.count ?? 0
+                has_signed: (mySigs?.length ?? 0) > 0,
+                signature_count: count ?? 0
             };
-        });
+        }));
 
-        return NextResponse.json({ proposals: formatted });
+        const response = NextResponse.json({ proposals: formatted });
+        response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return response;
     } catch (err: any) {
-        console.error('Server error fetching pending gas proposals:', err);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

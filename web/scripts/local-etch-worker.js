@@ -42,10 +42,13 @@ if (!SECRET) {
 }
 
 async function runOnce() {
+  const startedAt = new Date().toISOString();
+  console.log(startedAt, `triggering etch-all worker at ${BASE}/api/workers/etch-all`);
+
   writeStatus({
     isRunning: true,
     nextRunAt: null,
-    lastRunStartedAt: new Date().toISOString(),
+    lastRunStartedAt: startedAt,
     lastStatus: 'running',
     lastError: null,
   });
@@ -57,6 +60,21 @@ async function runOnce() {
       body: '{}',
     });
     const result = await res.json();
+    console.log(
+      new Date().toISOString(),
+      `etch-all ${res.status}: processed ${result.processedCommunities ?? 0} communit${result.processedCommunities === 1 ? 'y' : 'ies'}`
+    );
+
+    const failedGasChecks = Object.values(result.results || {})
+      .filter((community) => community?.detail?.errors?.some((error) => String(error?.message || '').includes('Insufficient gas balance')));
+
+    if (failedGasChecks.length > 0) {
+      console.log(
+        new Date().toISOString(),
+        `${failedGasChecks.length} communit${failedGasChecks.length === 1 ? 'y' : 'ies'} skipped because gas balance is below 0.5 ADA`
+      );
+    }
+
     writeStatus({
       isRunning: false,
       lastRunFinishedAt: new Date().toISOString(),

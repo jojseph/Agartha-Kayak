@@ -10,10 +10,6 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'cardano.org',
       },
-      {
-        protocol: 'https',
-        hostname: 'api.qrserver.com',
-      },
     ],
   },
   webpack: (config) => {
