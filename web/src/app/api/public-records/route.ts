@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { collectPublicRecordWallets, formatQueueRecordForPublicBoard } from '@/lib/publicRecordFormatting';
+import { collectPublicRecordWallets, collectReconciliationReferenceIds, formatQueueRecordForPublicBoard } from '@/lib/publicRecordFormatting';
 import { hydratePublicRecordProofs } from '@/lib/publicRecordProof';
 
 export const revalidate = 0;
@@ -38,7 +38,9 @@ export async function GET() {
 
         const records = await hydratePublicRecordProofs(data || []);
         const walletAddresses = collectPublicRecordWallets(records as any[]);
+        const reconciliationReferenceIds = collectReconciliationReferenceIds(records as any[]);
         let aliasMap: Record<string, string> = {};
+        let reconciliationAmountMap: Record<string, number> = {};
 
         if (walletAddresses.length > 0) {
             const { data: members } = await supabaseAdmin
@@ -52,7 +54,20 @@ export async function GET() {
             }, {});
         }
 
-        const formattedRecords = records.map((record: any) => formatQueueRecordForPublicBoard(record, aliasMap));
+        if (reconciliationReferenceIds.length > 0) {
+            const { data: reconciliations } = await supabaseAdmin
+                .from('treasury_reconciliations')
+                .select('reconciliation_id, proposed_balance')
+                .in('reconciliation_id', reconciliationReferenceIds);
+
+            reconciliationAmountMap = (reconciliations || []).reduce((acc: Record<string, number>, reconciliation: any) => {
+                const amount = Number(reconciliation.proposed_balance);
+                if (Number.isFinite(amount)) acc[reconciliation.reconciliation_id] = amount;
+                return acc;
+            }, {});
+        }
+
+        const formattedRecords = records.map((record: any) => formatQueueRecordForPublicBoard(record, aliasMap, {}, reconciliationAmountMap));
 
         return NextResponse.json({ records: formattedRecords });
     } catch (error) {

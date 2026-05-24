@@ -1,7 +1,7 @@
 type PublicRecordKind = 'treasury' | 'member';
 type LedgerCategory = 'loans' | 'members' | 'votes' | 'reconciliation' | 'gas' | 'ledger';
 
-type QueueRecord = {
+export type QueueRecord = {
   queue_id: string;
   record_type: string;
   reference_id: string;
@@ -20,6 +20,7 @@ type QueueRecord = {
 
 type AliasMap = Record<string, string>;
 type VisibilityMap = Record<string, boolean>;
+type AmountOverrideMap = Record<string, number>;
 
 const TREASURY_RECORD_TYPES = new Set([
   'loan_approved',
@@ -58,10 +59,24 @@ export function collectPublicRecordWallets(records: QueueRecord[]) {
   return Array.from(addresses);
 }
 
-export function formatQueueRecordForPublicBoard(record: QueueRecord, aliasMap: AliasMap = {}, visibilityMap: VisibilityMap = {}) {
+export function collectReconciliationReferenceIds(records: QueueRecord[]) {
+  return Array.from(new Set(
+    records
+      .filter((record) => record.record_type.startsWith('reconciliation_'))
+      .map((record) => record.reference_id)
+      .filter(Boolean)
+  ));
+}
+
+export function formatQueueRecordForPublicBoard(
+  record: QueueRecord,
+  aliasMap: AliasMap = {},
+  visibilityMap: VisibilityMap = {},
+  amountOverrides: AmountOverrideMap = {}
+) {
   const payload = normalizePayload(record.onchain_payload);
   const type = getRecordKind(record.record_type);
-  const amount = getAmount(record, payload);
+  const amount = getAmount(record, payload, amountOverrides);
   const currency = getCurrency(record, payload);
   const purpose = getPurpose(record, payload);
   const createdAt = new Date(record.created_at);
@@ -135,7 +150,12 @@ function getRecordKind(recordType: string): PublicRecordKind {
   return TREASURY_RECORD_TYPES.has(recordType) ? 'treasury' : 'member';
 }
 
-function getAmount(record: QueueRecord, payload: Record<string, unknown>) {
+function getAmount(record: QueueRecord, payload: Record<string, unknown>, amountOverrides: AmountOverrideMap) {
+  if (record.record_type.startsWith('reconciliation_')) {
+    const overrideAmount = amountOverrides[record.reference_id];
+    if (Number.isFinite(overrideAmount)) return overrideAmount;
+  }
+
   const payloadAmount = Number(payload.amt);
   if (Number.isFinite(payloadAmount)) return payloadAmount;
 

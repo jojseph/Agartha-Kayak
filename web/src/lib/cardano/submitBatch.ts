@@ -100,6 +100,78 @@ function splitIntoBatches(rows: OnchainQueueRow[]) {
   return batches;
 }
 
+function isReconciliationRecord(row: OnchainQueueRow) {
+  return typeof row.record_type === 'string' && row.record_type.startsWith('reconciliation_');
+}
+
+async function hydrateReconciliationPayloads(rows: OnchainQueueRow[]) {
+  const reconciliationIds = Array.from(new Set(
+    rows
+      .filter(isReconciliationRecord)
+      .map((row) => row.reference_id)
+      .filter(Boolean)
+  ));
+
+  if (reconciliationIds.length === 0) return rows;
+
+  const { data: reconciliations, error } = await supabaseAdmin
+    .from('treasury_reconciliations')
+    .select('reconciliation_id, proposed_balance')
+    .in('reconciliation_id', reconciliationIds);
+
+  if (error) {
+    throw new Error(`Failed to hydrate reconciliation payloads: ${error.message ?? JSON.stringify(error)}`);
+  }
+
+  const proposedBalanceById = new Map(
+    (reconciliations || [])
+      .map((reconciliation: any) => [reconciliation.reconciliation_id, Number(reconciliation.proposed_balance)] as const)
+      .filter(([, amount]) => Number.isFinite(amount))
+  );
+
+  const hydratedRows = rows.map((row) => {
+    const proposedBalance = proposedBalanceById.get(row.reference_id);
+    if (!isReconciliationRecord(row) || proposedBalance == null) return row;
+
+    const payload = row.onchain_payload && typeof row.onchain_payload === 'object'
+      ? row.onchain_payload
+      : {};
+    const onchainPayload = {
+      ...payload,
+      amt: proposedBalance,
+      cur: payload.cur ?? 'PHP',
+    };
+
+    return {
+      ...row,
+      onchain_payload: onchainPayload,
+      estimated_bytes: Buffer.byteLength(JSON.stringify(onchainPayload), 'utf8') + 64,
+    };
+  });
+
+  const idField = getBatchKey(hydratedRows);
+  const changedRows = hydratedRows.filter((row, index) =>
+    isReconciliationRecord(row)
+    && JSON.stringify(row.onchain_payload ?? null) !== JSON.stringify(rows[index].onchain_payload ?? null)
+  );
+
+  for (const row of changedRows) {
+    const { error: updateError } = await supabaseAdmin
+      .from('onchain_queue')
+      .update({
+        onchain_payload: row.onchain_payload,
+        estimated_bytes: row.estimated_bytes,
+      })
+      .eq(idField, row[idField]);
+
+    if (updateError) {
+      throw new Error(`Failed to update queued reconciliation payload: ${updateError.message ?? JSON.stringify(updateError)}`);
+    }
+  }
+
+  return hydratedRows;
+}
+
 export async function submitBatchForCommunity(communityId: string): Promise<SubmitBatchResult> {
   const { data: queuedRows, error: fetchError } = await supabaseAdmin
     .from('onchain_queue')
@@ -148,8 +220,9 @@ export async function submitBatchForCommunity(communityId: string): Promise<Subm
     return result;
   }
 
-  const idField = getBatchKey(queuedRows);
-  const batches = splitIntoBatches(queuedRows);
+  const hydratedRows = await hydrateReconciliationPayloads(queuedRows);
+  const idField = getBatchKey(hydratedRows);
+  const batches = splitIntoBatches(hydratedRows);
   result.batches = batches.length;
 
   for (const batch of batches) {

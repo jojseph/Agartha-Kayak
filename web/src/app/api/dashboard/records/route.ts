@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { collectPublicRecordWallets, formatQueueRecordForPublicBoard } from '@/lib/publicRecordFormatting';
+import { collectPublicRecordWallets, collectReconciliationReferenceIds, formatQueueRecordForPublicBoard } from '@/lib/publicRecordFormatting';
 import { hydratePublicRecordProofs } from '@/lib/publicRecordProof';
 
 export const revalidate = 0;
@@ -76,7 +76,9 @@ export async function GET(request: Request) {
 
         const records = await hydratePublicRecordProofs(data || []);
         const walletAddresses = collectPublicRecordWallets(records as any[]);
+        const reconciliationReferenceIds = collectReconciliationReferenceIds(records as any[]);
         let aliasMap: Record<string, string> = {};
+        let reconciliationAmountMap: Record<string, number> = {};
 
         if (walletAddresses.length > 0) {
             const { data: members } = await supabaseAdmin
@@ -86,6 +88,19 @@ export async function GET(request: Request) {
 
             aliasMap = (members || []).reduce((acc: Record<string, string>, member: any) => {
                 acc[member.wallet_address] = member.alias;
+                return acc;
+            }, {});
+        }
+
+        if (reconciliationReferenceIds.length > 0) {
+            const { data: reconciliations } = await supabaseAdmin
+                .from('treasury_reconciliations')
+                .select('reconciliation_id, proposed_balance')
+                .in('reconciliation_id', reconciliationReferenceIds);
+
+            reconciliationAmountMap = (reconciliations || []).reduce((acc: Record<string, number>, reconciliation: any) => {
+                const amount = Number(reconciliation.proposed_balance);
+                if (Number.isFinite(amount)) acc[reconciliation.reconciliation_id] = amount;
                 return acc;
             }, {});
         }
@@ -110,7 +125,7 @@ export async function GET(request: Request) {
             }, {});
         }
 
-        const formatted = records.map((record: any) => formatQueueRecordForPublicBoard(record, aliasMap, visibilityMap));
+        const formatted = records.map((record: any) => formatQueueRecordForPublicBoard(record, aliasMap, visibilityMap, reconciliationAmountMap));
 
         const visible = canSeePrivate
             ? formatted
