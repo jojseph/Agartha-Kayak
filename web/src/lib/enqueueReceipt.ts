@@ -139,13 +139,13 @@ function buildAutoSummary(params: Parameters<typeof enqueueReceipt>[0]): string 
         case 'share_capital':
             return `[${code}] ${amtStr} — new member | appr: ${params.approvedBy?.[0] ?? ''}`;
         case 'reconciliation_approved':
-            return `[${code}] ${amtStr} adjustment — ${params.purpose ?? ''} | appr: ${(params.approvedBy ?? []).length} signers`;
+            return `[${code}] ${amtStr} balance — ${params.purpose ?? ''} | appr: ${(params.approvedBy ?? []).length} signers`;
         case 'reconciliation_proposed':
-            return `[${code}] proposed ${amtStr} adjustment — ${params.purpose ?? ''}`;
+            return `[${code}] proposed ${amtStr} balance — ${params.purpose ?? ''}`;
         case 'reconciliation_signature':
             return `[${code}] ${params.action ?? ''} by ${params.memberAddress} — ${params.purpose ?? ''}`;
         case 'reconciliation_rejected':
-            return `[${code}] rejected adjustment — ${params.purpose ?? ''} | rejt: ${(params.rejectedBy ?? []).length} signers`;
+            return `[${code}] rejected balance — ${params.purpose ?? ''} | rejt: ${(params.rejectedBy ?? []).length} signers`;
         case 'loan_defaulted':
             return `[${code}] borrower: ${params.memberAddress} due: ${params.dueDate ?? ''}`;
         case 'member_approved':

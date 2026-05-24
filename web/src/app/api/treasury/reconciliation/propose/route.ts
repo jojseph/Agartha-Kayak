@@ -9,9 +9,14 @@ export async function POST(request: Request) {
 
     try {
         const { elderAddress, proposedBalance, reason } = await request.json();
+        const proposedBalanceValue = Number(proposedBalance);
 
-        if (!elderAddress || proposedBalance === undefined || !reason) {
+        if (!elderAddress || proposedBalance === undefined || proposedBalance === null || proposedBalance === '' || !reason) {
             return NextResponse.json({ error: 'elderAddress, proposedBalance, and reason are required' }, { status: 400 });
+        }
+
+        if (!Number.isFinite(proposedBalanceValue) || proposedBalanceValue < 0) {
+            return NextResponse.json({ error: 'proposedBalance must be a valid non-negative number' }, { status: 400 });
         }
 
         if (elderAddress !== auth.walletAddress) {
@@ -54,7 +59,7 @@ export async function POST(request: Request) {
                 community_id: elder.community_id,
                 proposed_by: elderAddress,
                 previous_balance: community.treasury_balance ?? 0,
-                proposed_balance: proposedBalance,
+                proposed_balance: proposedBalanceValue,
                 reason,
                 sigs_required: sigsRequired,
             }])
@@ -71,7 +76,7 @@ export async function POST(request: Request) {
             recordType: 'reconciliation_proposed',
             referenceId: reconciliation.reconciliation_id,
             memberAddress: elderAddress,
-            amount: Math.abs(Number(proposedBalance) - Number(community.treasury_balance ?? 0)),
+            amount: proposedBalanceValue,
             currency: 'PHP',
             purpose: reason,
             role: elder.role,

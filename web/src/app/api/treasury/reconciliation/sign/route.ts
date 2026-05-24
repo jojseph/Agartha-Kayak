@@ -116,6 +116,13 @@ export async function POST(request: Request) {
             }, { status: 400 });
         }
 
+        const proposedBalanceAmount = Number(recon.proposed_balance);
+        const previousBalanceAmount = Number(recon.previous_balance ?? 0);
+
+        if (!Number.isFinite(proposedBalanceAmount) || !Number.isFinite(previousBalanceAmount)) {
+            return NextResponse.json({ error: 'Reconciliation balance data is invalid' }, { status: 500 });
+        }
+
         const { error: sigError } = await supabaseAdmin
             .from('reconciliation_signatures')
             .insert([{
@@ -180,7 +187,7 @@ export async function POST(request: Request) {
             recordType: 'reconciliation_signature',
             referenceId: reconciliationId,
             memberAddress: elderAddress,
-            amount: Math.abs(recon.proposed_balance - recon.previous_balance),
+            amount: proposedBalanceAmount,
             currency: 'PHP',
             purpose: recon.reason,
             role: elder.role,
@@ -202,7 +209,7 @@ export async function POST(request: Request) {
             }
 
             try {
-                await setTreasuryBalance(recon.community_id, recon.proposed_balance);
+                await setTreasuryBalance(recon.community_id, proposedBalanceAmount);
             } catch (treasuryError: any) {
                 console.error('Update treasury balance error:', treasuryError);
                 return NextResponse.json({ error: 'Failed to update treasury balance' }, { status: 500 });
@@ -214,7 +221,7 @@ export async function POST(request: Request) {
                     community_id: recon.community_id,
                     member_address: recon.proposed_by,
                     transaction_type: 'reconciliation',
-                    amount: recon.proposed_balance - recon.previous_balance,
+                    amount: proposedBalanceAmount - previousBalanceAmount,
                     description: `Reconciliation: ${recon.reason}`,
                 }]);
 
@@ -225,7 +232,7 @@ export async function POST(request: Request) {
                 recordType: 'reconciliation_approved',
                 referenceId: reconciliationId,
                 memberAddress: recon.proposed_by,
-                amount: Math.abs(recon.proposed_balance - recon.previous_balance),
+                amount: proposedBalanceAmount,
                 currency: 'PHP',
                 purpose: recon.reason,
                 approvedBy: (approvedSigs || []).map((s: any) => s.elder_address),
@@ -257,7 +264,7 @@ export async function POST(request: Request) {
                 recordType: 'reconciliation_rejected',
                 referenceId: reconciliationId,
                 memberAddress: recon.proposed_by,
-                amount: Math.abs(recon.proposed_balance - recon.previous_balance),
+                amount: proposedBalanceAmount,
                 currency: 'PHP',
                 purpose: recon.reason,
                 rejectedBy: (rejectedSigs || []).map((s: any) => s.elder_address),
