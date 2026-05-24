@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 
 export async function GET(request: Request) {
     try {
@@ -74,7 +75,9 @@ export async function GET(request: Request) {
             };
         });
 
-        return NextResponse.json({ requests: enrichedLoans, myAddress: address });
+        const response = NextResponse.json({ requests: enrichedLoans, myAddress: address });
+        response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return response;
     } catch (err) {
         console.error('Server error fetching treasury requests:', err);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+
 export async function GET(request: Request) {
     try {
         const url = new URL(request.url);
@@ -25,7 +28,9 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Database error' }, { status: 500 });
         }
 
-        return NextResponse.json({ requests: data || [] });
+        const response = NextResponse.json({ requests: data || [] });
+        response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return response;
     } catch {
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }

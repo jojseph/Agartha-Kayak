@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 
 export async function GET(request: Request) {
     try {
@@ -12,11 +13,23 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 });
         }
 
-        const { data: member, error: memberError } = await supabaseAdmin
+        const supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+            {
+                global: {
+                    fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }),
+                },
+            }
+        );
+
+        const { data: member, error: memberError } = await supabase
             .from('members')
             .select('role, community_id')
             .eq('wallet_address', address)
-            .single();
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
         if (memberError || !member) {
             return NextResponse.json({ error: 'Member not found' }, { status: 404 });
@@ -29,10 +42,11 @@ export async function GET(request: Request) {
             memberRequests: 0,
         };
 
-        const { count: mCount } = await supabaseAdmin
+        const { count: mCount } = await supabase
             .from('loans')
             .select('*', { count: 'exact', head: true })
             .eq('lender_address', address)
+            .eq('loan_type', 'peer')
             .eq('status', 'pending');
 
         counts.memberRequests = mCount ?? 0;
@@ -40,7 +54,7 @@ export async function GET(request: Request) {
         if (member.role === 'elder' || member.role === 'owner') {
             const communityId = member.community_id;
 
-            const { data: communityMembers } = await supabaseAdmin
+            const { data: communityMembers } = await supabase
                 .from('members')
                 .select('wallet_address')
                 .eq('community_id', communityId);
@@ -48,7 +62,7 @@ export async function GET(request: Request) {
             const memberAddresses = (communityMembers || []).map((m: any) => m.wallet_address);
 
             if (memberAddresses.length > 0) {
-                const { data: loans } = await supabaseAdmin
+                const { data: loans } = await supabase
                     .from('loans')
                     .select('loan_id, borrower_address')
                     .eq('loan_type', 'treasury')
@@ -57,7 +71,7 @@ export async function GET(request: Request) {
 
                 if (loans && loans.length > 0) {
                     const loanIds = loans.map((l: any) => l.loan_id);
-                    const { data: myVotes } = await supabaseAdmin
+                    const { data: myVotes } = await supabase
                         .from('treasury_loan_votes')
                         .select('loan_id')
                         .eq('elder_address', address)
@@ -68,7 +82,7 @@ export async function GET(request: Request) {
                 }
             }
 
-            const { count: nmCount } = await supabaseAdmin
+            const { count: nmCount } = await supabase
                 .from('members')
                 .select('*', { count: 'exact', head: true })
                 .eq('community_id', communityId)
@@ -76,7 +90,7 @@ export async function GET(request: Request) {
 
             counts.newMembers = nmCount ?? 0;
 
-            const { data: reconciliations } = await supabaseAdmin
+            const { data: reconciliations } = await supabase
                 .from('treasury_reconciliations')
                 .select('reconciliation_id, proposed_by')
                 .eq('community_id', communityId)
@@ -84,7 +98,7 @@ export async function GET(request: Request) {
 
             if (reconciliations && reconciliations.length > 0) {
                 const reconIds = reconciliations.map((r: any) => r.reconciliation_id);
-                const { data: mySigs } = await supabaseAdmin
+                const { data: mySigs } = await supabase
                     .from('reconciliation_signatures')
                     .select('reconciliation_id')
                     .eq('elder_address', address)
@@ -95,7 +109,9 @@ export async function GET(request: Request) {
             }
         }
 
-        return NextResponse.json({ counts });
+        const response = NextResponse.json({ counts });
+        response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return response;
     } catch (err: any) {
         console.error('Server error fetching pending counts:', err);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 
 export async function GET(request: Request) {
     try {
@@ -30,6 +31,7 @@ export async function GET(request: Request) {
                 signatures:reconciliation_signatures(elder_address, decision, signed_at)
             `)
             .eq('community_id', member.community_id)
+            .eq('status', 'pending')
             .order('created_at', { ascending: false });
 
         if (reconError) {
@@ -37,7 +39,9 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Failed to fetch reconciliations', detail: reconError.message }, { status: 500 });
         }
 
-        return NextResponse.json({ success: true, reconciliations: reconciliations ?? [] });
+        const response = NextResponse.json({ success: true, reconciliations: reconciliations ?? [] });
+        response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return response;
     } catch (err: any) {
         console.error('Server error fetching reconciliations:', err);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

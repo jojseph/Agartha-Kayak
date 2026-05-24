@@ -534,6 +534,18 @@ export default function DashboardTestPage() {
     return data;
   };
 
+  const loadPendingCounts = async (walletAddress: string) => {
+    const res = await fetch(`/api/dashboard/pending-counts?address=${encodeURIComponent(walletAddress)}&t=${Date.now()}`, { cache: 'no-store' });
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to load pending counts.');
+    }
+
+    if (data.counts) setPendingCounts(data.counts);
+    return data.counts;
+  };
+
   const loadGasProposals = async (walletAddress: string) => {
     setGasLoadError('');
     setGasLoading(true);
@@ -608,7 +620,7 @@ export default function DashboardTestPage() {
   const fetchQueue = async () => {
     if (!address) return;
     try {
-      const res = await fetch(`/api/community/queue?address=${address}`);
+      const res = await fetch(`/api/community/queue?address=${encodeURIComponent(address)}&t=${Date.now()}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setQueueItems(data.queue || []);
@@ -638,12 +650,7 @@ export default function DashboardTestPage() {
 
   useEffect(() => {
     if (address) {
-      fetch(`/api/dashboard/pending-counts?address=${address}`)
-        .then(r => r.json())
-        .then(d => {
-          if (d.counts) setPendingCounts(d.counts);
-        })
-        .catch(console.error);
+      loadPendingCounts(address).catch(console.error);
     }
   }, [address]);
 
@@ -735,7 +742,13 @@ export default function DashboardTestPage() {
         body: JSON.stringify({ loanId, action, reason, lenderAddress: address })
       });
       if (res.ok) {
-        setElderRequests(elderRequests.map(r => r.loan_id === loanId ? { ...r, status: action } : r));
+        setElderRequests(prev => prev.map(r => r.loan_id === loanId ? { ...r, status: action } : r));
+        setPendingCounts(prev => ({ ...prev, memberRequests: Math.max(0, prev.memberRequests - 1) }));
+        if (address) {
+          loadPendingCounts(address).catch(console.error);
+          refreshActivities(address);
+          fetchQueue();
+        }
       }
     } catch (err) {
       console.error(err);
@@ -768,10 +781,11 @@ export default function DashboardTestPage() {
   const openElderModal = async () => {
     if (!address) return;
     try {
-      const res = await fetch(`/api/loans/requests?address=${address}`);
+      const res = await fetch(`/api/loans/requests?address=${encodeURIComponent(address)}&t=${Date.now()}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setElderRequests((data.requests || []).map((r: any) => ({ ...r, status: 'pending' })));
+        loadPendingCounts(address).catch(console.error);
       }
     } catch (err) {
       console.error(err);
@@ -782,13 +796,14 @@ export default function DashboardTestPage() {
   const openTreasuryElderModal = async () => {
     if (!address) return;
     try {
-      const res = await fetch(`/api/loans/treasury/pending?address=${address}`);
+      const res = await fetch(`/api/loans/treasury/pending?address=${encodeURIComponent(address)}&t=${Date.now()}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setTreasuryElderRequests((data.requests || []).map((r: any) => ({
           ...r,
           status: r.status === 'pending' ? 'pending' : r.status,
         })));
+        loadPendingCounts(address).catch(console.error);
       }
     } catch (err) {
       console.error(err);
@@ -941,10 +956,11 @@ export default function DashboardTestPage() {
                 <button className="elder-panel__cta" onClick={async () => {
                   if (!address) return;
                   try {
-                    const res = await fetch(`/api/treasury/reconciliation/pending?address=${address}`);
+                    const res = await fetch(`/api/treasury/reconciliation/pending?address=${encodeURIComponent(address)}&t=${Date.now()}`, { cache: 'no-store' });
                     if (res.ok) {
                       const data = await res.json();
                       setReconList(data.reconciliations || []);
+                      loadPendingCounts(address).catch(console.error);
                     }
                   } catch (err) { console.error(err); }
                   setReconModalOpen(true);
@@ -1054,7 +1070,7 @@ export default function DashboardTestPage() {
                     <div className="nq-item__body">
                       <span className="nq-item__label">{group.count} {group.label}{group.count !== 1 ? 's' : ''}</span>
                       <span className="nq-item__meta">
-                        {group.bytes} bytes total\n                        {group.status === 'queued' ? ' · Awaiting batch' : ''}
+                        {group.bytes} bytes total{group.status === 'queued' ? ' · Awaiting batch' : ''}
                       </span>
                     </div>
                     {group.status === 'queued' && <span className="nq-item__status">Queued</span>}
@@ -2737,6 +2753,7 @@ export default function DashboardTestPage() {
                       Cancel
                     </button>
                     <button className="btn-approve" style={{ flex: 1 }} disabled={!reconBalance || !reconReason.trim()} onClick={async () => {
+                      if (!address) return;
                       const res = await walletAuthFetch(wallet, '/api/treasury/reconciliation/propose', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -2748,7 +2765,7 @@ export default function DashboardTestPage() {
                         setReconBalance('');
                         setReconReason('');
 
-                        const listRes = await fetch(`/api/treasury/reconciliation/pending?address=${address}`);
+                        const listRes = await fetch(`/api/treasury/reconciliation/pending?address=${encodeURIComponent(address)}&t=${Date.now()}`, { cache: 'no-store' });
                         if (listRes.ok) { const d = await listRes.json(); setReconList(d.reconciliations || []); }
                       } else { alert(data.error || 'Failed to propose reconciliation'); }
                     }}>
