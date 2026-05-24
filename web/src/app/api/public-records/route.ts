@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { collectPublicRecordWallets, formatQueueRecordForPublicBoard } from '@/lib/publicRecordFormatting';
+import { hydratePublicRecordProofs } from '@/lib/publicRecordProof';
 
 export const revalidate = 0;
 
@@ -35,7 +36,7 @@ export async function GET() {
             return NextResponse.json({ error: 'Failed to fetch public records' }, { status: 500 });
         }
 
-        const records = data || [];
+        const records = await hydratePublicRecordProofs(data || []);
         const walletAddresses = collectPublicRecordWallets(records as any[]);
         let aliasMap: Record<string, string> = {};
 

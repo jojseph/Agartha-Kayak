@@ -14,6 +14,7 @@ type QueueRecord = {
   created_at: string;
   etched_at?: string | null;
   onchain_payload?: Record<string, unknown> | null;
+  network_fee_ada?: number | string | null;
   communities?: { name?: string | null } | null;
 };
 
@@ -112,6 +113,7 @@ export function formatQueueRecordForPublicBoard(record: QueueRecord, aliasMap: A
     status: record.status || 'queued',
     batchId: record.batch_id || null,
     blockNumber: record.block_number || null,
+    networkFeeAda: getNetworkFeeAda(record.network_fee_ada),
     etchedAt: record.etched_at || null,
     targetType,
     targetId,
@@ -240,6 +242,11 @@ function formatShortHash(value: string) {
   if (!value) return 'Pending';
   if (value.length <= 12) return value;
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function getNetworkFeeAda(value: number | string | null | undefined) {
+  const fee = Number(value);
+  return Number.isFinite(fee) && fee > 0 ? fee : null;
 }
 
 function getAlias(aliasMap: AliasMap, address: string) {

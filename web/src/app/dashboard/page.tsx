@@ -2326,6 +2326,16 @@ export default function DashboardTestPage() {
         const proofLabel = isEtched ? 'Transaction hash' : 'Queue ID';
         const statusClass = `tx-status tx-status--${isFailed ? 'failed' : status === 'etched' ? 'etched' : status === 'batched' ? 'batched' : 'queued'}`;
         const copyValue = proofValue || txRecord.queueId || txRecord.id;
+        const blockLabel = isEtched
+          ? txRecord.blockNumber
+            ? `#${txRecord.blockNumber}`
+            : 'Syncing block number'
+          : 'Available after etching';
+        const networkFeeLabel = isEtched
+          ? txRecord.networkFeeAda
+            ? `${Number(txRecord.networkFeeAda).toFixed(6)} ADA`
+            : 'Syncing fee details'
+          : 'Calculated after etching';
         const shortId = (value: string | null | undefined) => {
           if (!value) return 'Not available';
           return value.length > 18 ? `${value.slice(0, 10)}...${value.slice(-6)}` : value;
@@ -2341,7 +2351,7 @@ export default function DashboardTestPage() {
         return (
           <div className="loan-modal is-open">
             <div className="loan-modal__backdrop" onClick={() => setTxModal({ isOpen: false, txKey: null })}></div>
-            <div className="loan-modal__dialog">
+            <div className="loan-modal__dialog tx-receipt-dialog">
               <header className="loan-modal__header">
                 <div className="elder-modal__title-block">
                   <div className="elder-modal__title">Ledger Receipt</div>
@@ -2349,7 +2359,7 @@ export default function DashboardTestPage() {
                 </div>
                 <button className="loan-modal__close" onClick={() => setTxModal({ isOpen: false, txKey: null })}><X size={14} /></button>
               </header>
-              <div className="loan-modal__body">
+              <div className="loan-modal__body tx-receipt-body">
                 <span className={statusClass}>
                   <ShieldCheck size={12} strokeWidth={2.5} />
                   {statusLabel} - {lifecycleMessage}
@@ -2436,11 +2446,11 @@ export default function DashboardTestPage() {
                   </div>
                   <div className="tx-detail-row">
                     <span className="tx-detail-row__label">Block</span>
-                    <span className="tx-detail-row__value tx-detail-row__value--mono">{isEtched ? `#${txRecord.blockNumber || 'Pending'}` : 'Available after etching'}</span>
+                    <span className="tx-detail-row__value tx-detail-row__value--mono">{blockLabel}</span>
                   </div>
                   <div className="tx-detail-row">
                     <span className="tx-detail-row__label">Network fee</span>
-                    <span className="tx-detail-row__value">Calculated after etching</span>
+                    <span className="tx-detail-row__value tx-detail-row__value--mono">{networkFeeLabel}</span>
                   </div>
                   <div className="tx-detail-row">
                     <span className="tx-detail-row__label">Confirmations</span>
@@ -3865,16 +3875,19 @@ const CUSTOM_CSS = `
   .elder-empty__sub { font-size: 13px; color: var(--text-2); line-height: 1.5; }
   .elder-empty__close { margin-top: 18px; background: var(--text); color: var(--text-inverse); border: 0; border-radius: 999px; padding: 10px 22px; font-size: 13px; font-weight: 600; cursor: pointer; }
 
-  .tx-status { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 999px; background: var(--status-green-bg); border: 1px solid var(--status-green-border); color: var(--status-green); font-size: 12px; font-weight: 500; margin-bottom: 22px; }
+  .tx-receipt-dialog { max-width: 680px; }
+  .tx-receipt-body { overflow: hidden; }
+  .tx-status { display: inline-flex; align-items: center; flex-wrap: wrap; max-width: 100%; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 999px; background: var(--status-green-bg); border: 1px solid var(--status-green-border); color: var(--status-green); font-size: 12px; font-weight: 500; margin-bottom: 22px; line-height: 1.35; }
   .tx-status--queued { background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.24); color: #b45309; }
   .tx-status--batched { background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.24); color: #2563eb; }
   .tx-status--etched { background: var(--status-green-bg); border-color: var(--status-green-border); color: var(--status-green); }
   .tx-status--failed { background: rgba(220, 38, 38, 0.08); border-color: rgba(220, 38, 38, 0.22); color: #b91c1c; }
-  .tx-amount-block { display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 24px; padding-bottom: 22px; border-bottom: 1px solid var(--border); }
-  .tx-amount-block__value { font-size: 42px; font-weight: 800; line-height: 1; color: var(--text); letter-spacing: -0.04em; margin-bottom: 10px; }
-  .tx-amount-block__value--none { font-size: 30px; letter-spacing: -0.02em; color: var(--text-2); }
-  .tx-amount-block__type { display: inline-flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-2); letter-spacing: 0.10em; text-transform: uppercase; font-weight: 600; }
-  .tx-amount-block__type-dot { width: 4px; height: 4px; border-radius: 999px; background: var(--text-3); }
+  .tx-amount-block { display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; min-width: 0; margin-bottom: 24px; padding-bottom: 22px; border-bottom: 1px solid var(--border); }
+  .tx-amount-block__value { max-width: 100%; font-size: 42px; font-weight: 800; line-height: 1.08; color: var(--text); letter-spacing: 0; margin-bottom: 10px; overflow-wrap: anywhere; }
+  .tx-amount-block__value--none { font-size: 30px; color: var(--text-2); }
+  .tx-amount-block__type { display: flex; align-items: flex-start; flex-wrap: wrap; max-width: 100%; min-width: 0; gap: 6px 8px; font-size: 11.5px; line-height: 1.45; color: var(--text-2); letter-spacing: 0.10em; text-transform: uppercase; font-weight: 600; }
+  .tx-amount-block__type span { min-width: 0; overflow-wrap: anywhere; }
+  .tx-amount-block__type-dot { width: 4px; height: 4px; margin-top: 0.55em; border-radius: 999px; background: var(--text-3); flex: 0 0 auto; }
   .tx-parties { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin-bottom: 22px; padding: 16px 0; border-bottom: 1px solid var(--border); }
   .tx-party { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   .tx-party__label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3); }
@@ -3887,14 +3900,14 @@ const CUSTOM_CSS = `
   .tx-party__addr { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--text-3); margin-top: 3px; }
   .tx-arrow { display: grid; place-items: center; color: var(--text-3); flex-shrink: 0; padding-top: 22px; }
   .tx-details { display: flex; flex-direction: column; gap: 0; margin-bottom: 22px; padding: 4px 18px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; }
-  .tx-detail-row { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; padding: 11px 0; border-bottom: 1px solid var(--border); gap: 12px; }
+  .tx-detail-row { display: flex; align-items: flex-start; justify-content: space-between; font-size: 12.5px; padding: 11px 0; border-bottom: 1px solid var(--border); gap: 12px; }
   .tx-detail-row--section { padding-top: 9px; }
   .tx-detail-row--section .tx-detail-row__label { color: var(--text); font-weight: 700; }
   .tx-detail-row:last-child { border-bottom: 0; }
-  .tx-detail-row__label { color: var(--text-2); flex-shrink: 0; }
-  .tx-detail-row__value { color: var(--text); font-weight: 500; text-align: right; }
+  .tx-detail-row__label { color: var(--text-2); flex: 0 0 auto; }
+  .tx-detail-row__value { min-width: 0; max-width: min(70%, 420px); color: var(--text); font-weight: 500; text-align: right; overflow-wrap: anywhere; }
   .tx-detail-row__value--mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
-  .tx-detail-row__value-conf { display: inline-flex; align-items: center; gap: 5px; }
+  .tx-detail-row__value-conf { display: inline-flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 5px; }
   .tx-hash { margin-bottom: 20px; }
   .tx-hash__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
   .tx-hash__label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3); }
@@ -3964,6 +3977,9 @@ const CUSTOM_CSS = `
     .amount-input { font-size: 40px; width: 200px; }
     .tx-parties { grid-template-columns: 1fr; gap: 16px; }
     .tx-arrow { padding-top: 0; transform: rotate(90deg); }
+    .tx-detail-row { flex-direction: column; align-items: stretch; gap: 4px; }
+    .tx-detail-row__value { max-width: 100%; text-align: left; }
+    .tx-detail-row__value-conf { justify-content: flex-start; }
     .network-queue__head { flex-direction: column; align-items: flex-start; }
   }
 `;
