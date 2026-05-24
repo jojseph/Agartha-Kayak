@@ -44,7 +44,6 @@ export async function POST(request: Request) {
       }
 
       if (count && count > 0) {
-        console.log(`etch-all: triggering batch for ${community.name} with ${count} queued items`);
         try {
           const batchResult = await submitBatchForCommunity(community.community_id);
           results[community.community_id] = {

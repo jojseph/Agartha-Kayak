@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     if (auth instanceof NextResponse) return auth;
 
     try {
-        const { loanId, action, reason, lenderAddress } = await request.json();
+        const { loanId, action, lenderAddress } = await request.json();
 
         if (!loanId || !action) {
             return NextResponse.json({ error: 'loanId and action are required' }, { status: 400 });

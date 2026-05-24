@@ -1,19 +1,19 @@
-import {NextResponse} from 'next/server';
-import {supabaseAdmin} from '@/lib/supabaseAdmin';
+import { NextResponse } from 'next/server';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
-export async function GET(request: Request) {
+export async function GET() {
     return new NextResponse('Method Not Allowed', { status: 405 });
 }
 
 export async function POST(request: Request) {
-    try{
+    try {
         const { walletAddress } = await request.json();
 
         if (!walletAddress) {
             return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 });
         }
 
-        const {data, error} = await supabaseAdmin
+        const { data, error } = await supabaseAdmin
             .from('members')
             .select('*')
             .eq('wallet_address', walletAddress)
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
             member: data
         });
 
-    } catch (error) {
+    } catch {
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

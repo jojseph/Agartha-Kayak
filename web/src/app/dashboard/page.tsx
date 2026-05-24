@@ -138,131 +138,8 @@ interface CommunityStats {
   peerLoanCount: number;
 }
 
-interface Transaction {
-  fullHash: string;
-  type: 'treasury' | 'member';
-  purpose: string;
-  amount: number;
-  from: { kind: string; name: string; meta: string; addr: string };
-  to: { kind: string; name: string; meta: string; addr: string };
-  timestamp: string;
-  block: string;
-  slot: string;
-  feeAda: number;
-  feePhp: number;
-  confirmations: number;
-  confirmsTotal: number;
-}
-
 const POOL_BALANCE = 125000;
 
-const TX_DATA: Record<string, Transaction> = {
-  'tx1q8w': {
-    fullHash: 'tx1q8w7nx5kr4j2vh9p3m6q8d2sjh4y6kr5z9p2m4n6q8d2s1jh3k5m7q9p2v4n6r8t0w2x4y6z8d2j4',
-    type: 'treasury',
-    purpose: 'Medical',
-    amount: 8500,
-    from: { kind: 'treasury', name: 'Cooperative Treasury', meta: 'Multi-sig elder vault', addr: 'addr1q9k4xv2nptr8...m4w5kqz3vt7s' },
-    to: { kind: 'person', name: 'Joselito Mendoza', meta: 'Barangay San Roque · 94/100 trust', addr: 'addr1q4f7tn2pn8j...8m9k2zlfkm8t' },
-    timestamp: 'May 6, 2026 — 14:14:32 UTC+8',
-    block: '9,847,321',
-    slot: '142,837,564',
-    feeAda: 0.85,
-    feePhp: 0.17,
-    confirmations: 26,
-    confirmsTotal: 30,
-  },
-  'tx1m5k': {
-    fullHash: 'tx1m5k9nf3jr8w2v6h7p1m3q9d4sjy2y8kr3z5p1m6n9q4d8s7jh1k4m6q3p5v9n2r6t4w8x1y3z9d6j8',
-    type: 'member',
-    purpose: 'Education',
-    amount: 3200,
-    from: { kind: 'person', name: 'Cristina Bautista', meta: 'Barangay Bagong Silang · 88/100 trust', addr: 'addr1q3m8nv7pt5j...4w7kqz2lfvt8m' },
-    to: { kind: 'person', name: 'Aldous Domingo', meta: 'Barangay Santa Cruz · 87/100 trust', addr: 'addr1q5j7nx3pn2t...9w4kvz6mfln3p' },
-    timestamp: 'May 6, 2026 — 11:02:08 UTC+8',
-    block: '9,846,892',
-    slot: '142,824,123',
-    feeAda: 0.62,
-    feePhp: 0.13,
-    confirmations: 30,
-    confirmsTotal: 30,
-  },
-  'tx1f9j': {
-    fullHash: 'tx1f9j2pn8w5k4r7v3h1m9q6d2sjr8y5kr2z4p9m1n3q7d6s4jh2k8m1q5p7v3n9r4t2w6x8y1z4d2j7',
-    type: 'treasury',
-    purpose: 'Home Repair',
-    amount: 12000,
-    from: { kind: 'treasury', name: 'Cooperative Treasury', meta: 'Multi-sig elder vault', addr: 'addr1q9k4xv2nptr8...m4w5kqz3vt7s' },
-    to: { kind: 'person', name: 'Aurelio Salazar', meta: 'Barangay Mabuhay · 91/100 trust', addr: 'addr1q7n3kxv5pn8j...m2w4kqz6lftk9p' },
-    timestamp: 'May 5, 2026 — 16:48:51 UTC+8',
-    block: '9,841,073',
-    slot: '142,656,892',
-    feeAda: 0.91,
-    feePhp: 0.18,
-    confirmations: 30,
-    confirmsTotal: 30,
-  },
-  'tx1d2x': {
-    fullHash: 'tx1d2x6nv8w4k2r9v7h5m1q3d8sjy4y2kr8z6p3m9n5q1d4s8jh6k2m9q7p1v5n3r7t9w4x2y6z8d4j2',
-    type: 'member',
-    purpose: 'Livelihood',
-    amount: 2500,
-    from: { kind: 'person', name: 'Lorna Pascual', meta: 'Barangay Pag-asa · 85/100 trust', addr: 'addr1q4j8nx5pn3w...m2w7kqz4lfpv6p' },
-    to: { kind: 'person', name: 'Benigno Ocampo', meta: 'Barangay Magsaysay · 82/100 trust', addr: 'addr1q8m3kv6pn7j...m9w2kqz1lfvr3p' },
-    timestamp: 'May 4, 2026 — 09:23:14 UTC+8',
-    block: '9,832,415',
-    slot: '142,396,331',
-    feeAda: 0.58,
-    feePhp: 0.12,
-    confirmations: 30,
-    confirmsTotal: 30,
-  },
-  'tx1c8h': {
-    fullHash: 'tx1c8h4mv2pn7w3k9r6v1h5m8q2d4sjr1y8kr5z3p7m4n2q9d1s7jh3k6m8q2p4v1n7r9t5w3x6y2z8d1j5',
-    type: 'treasury',
-    purpose: 'Emergency',
-    amount: 15000,
-    from: { kind: 'treasury', name: 'Cooperative Treasury', meta: 'Multi-sig elder vault', addr: 'addr1q9k4xv2nptr8...m4w5kqz3vt7s' },
-    to: { kind: 'person', name: 'Estrella Villanueva', meta: 'Barangay Maligaya · 96/100 trust', addr: 'addr1q2k8nx9pn4j...m7w3kqz5lfmt2p' },
-    timestamp: 'May 3, 2026 — 19:07:42 UTC+8',
-    block: '9,823,107',
-    slot: '142,116,884',
-    feeAda: 1.04,
-    feePhp: 0.21,
-    confirmations: 30,
-    confirmsTotal: 30,
-  },
-  'tx1k6n': {
-    fullHash: 'tx1k6n3mv7pn2w8k4r5v9h3m1q6d8sjy7y4kr2z9p1m6n4q3d8s5jh1k9m3q7p2v4n6r1t8w5x3y9z2d6j4',
-    type: 'member',
-    purpose: 'Other',
-    amount: 1800,
-    from: { kind: 'person', name: 'Felipe Aquino', meta: 'Barangay Bayanihan · 79/100 trust', addr: 'addr1q1n5kxv3pn9w...m4w8kqz7lfvk5p' },
-    to: { kind: 'person', name: 'Rosario Lazaro', meta: 'Barangay Maligaya · 81/100 trust', addr: 'addr1q6m2kv8pn1j...m3w9kqz4lfvb7p' },
-    timestamp: 'May 1, 2026 — 13:55:09 UTC+8',
-    block: '9,805,624',
-    slot: '141,592,247',
-    feeAda: 0.49,
-    feePhp: 0.10,
-    confirmations: 30,
-    confirmsTotal: 30,
-  },
-  'tx1p3v': {
-    fullHash: 'tx1p3v9mv4pn5w8k2r7v1h3m6q9d4sjr3y6kr1z5p4m9n2q7d8s3jh5k1m9q4p7v3n8r2t6w9x4y1z7d3j6',
-    type: 'treasury',
-    purpose: 'Medical',
-    amount: 6000,
-    from: { kind: 'treasury', name: 'Cooperative Treasury', meta: 'Multi-sig elder vault', addr: 'addr1q9k4xv2nptr8...m4w5kqz3vt7s' },
-    to: { kind: 'person', name: 'Ricardo Limbo', meta: 'Barangay Magsaysay · 90/100 trust', addr: 'addr1q5n7kxv4pn8w...m1w6kqz9lfvr3p' },
-    timestamp: 'Apr 29, 2026 — 10:34:18 UTC+8',
-    block: '9,790,238',
-    slot: '141,131,569',
-    feeAda: 0.73,
-    feePhp: 0.15,
-    confirmations: 30,
-    confirmsTotal: 30,
-  },
-};
 
 const initialsOf = (name: string) => {
   const parts = name.split(' ').filter(Boolean);
@@ -2928,8 +2805,11 @@ export default function DashboardTestPage() {
                                 throw new Error("Invalid proposal amount");
                               }
 
-                              const masterAddress = process.env.NEXT_PUBLIC_CARDANO_SUBMITTER_ADDRESS || 'addr_test1vz03hd2vh5vzrm3d586fztnx9enksfdrgufh484ygagnnyqvudeht';
+                              const masterAddress = process.env.NEXT_PUBLIC_CARDANO_SUBMITTER_ADDRESS;
                               const blockfrostProjectId = process.env.NEXT_PUBLIC_BLOCKFROST_PROJECT_ID;
+                              if (!masterAddress) {
+                                throw new Error("Missing NEXT_PUBLIC_CARDANO_SUBMITTER_ADDRESS. Add your preprod submitter address to the frontend environment.");
+                              }
                               if (!blockfrostProjectId) {
                                 throw new Error("Missing NEXT_PUBLIC_BLOCKFROST_PROJECT_ID. Add your preprod Blockfrost project ID to the frontend environment.");
                               }

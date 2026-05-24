@@ -7,7 +7,9 @@
     "dev:worker": "dotenv -c local -- node scripts/local-etch-worker.js",
     "dev": "concurrently -c \"blue,green\" -n \"next,worker\" \"npm run dev:next\" \"npm run dev:worker\"",
     "build": "next build",
-    "start": "next start",
+    "start:next": "next start",
+    "start:worker": "dotenv -c local -- node scripts/local-etch-worker.js",
+    "start": "concurrently -c \"blue,green\" -n \"next,worker\" \"npm run start:next\" \"npm run start:worker\"",
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest"

@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 export async function GET(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-
     try {
         const url = new URL(request.url);
         const q = url.searchParams.get('q');
@@ -11,7 +9,7 @@ export async function GET(request: Request) {
 
         let userCommunityId = null;
         if (excludeAddress) {
-            const { data: user, error: userError } = await supabaseAdmin
+            const { data: user } = await supabaseAdmin
                 .from('members')
                 .select('community_id')
                 .eq('wallet_address', excludeAddress)
@@ -46,7 +44,7 @@ export async function GET(request: Request) {
         }
 
         return NextResponse.json({ members: data || [] });
-    } catch (err) {
+    } catch {
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

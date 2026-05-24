@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import ConnectionSuccess from '@/components/ConnectionSuccess';
 import { useWallet } from '@meshsdk/react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -41,7 +42,7 @@ export default function WalletAuthPage() {
       resolveWalletAddress(wallet).then((currentAddress) => {
         setAddress(currentAddress);
         checkLedger(currentAddress);
-      }).catch((err) => {
+      }).catch(() => {
         setErrorMessage("Failed to read wallet address.");
       });
     } else {
@@ -101,7 +102,7 @@ export default function WalletAuthPage() {
         }
         setAppState('needs_alias');
       }
-    } catch (err) {
+    } catch {
       setErrorMessage("Failed to check the Bayanihan Ledger.");
       disconnect();
     }
@@ -132,7 +133,7 @@ export default function WalletAuthPage() {
         const errorData = await res.json();
         setErrorMessage(errorData.details || "Failed to register. Please try again.");
       }
-    } catch (err) {
+    } catch {
       setErrorMessage("Network error during registration.");
     }
   };
@@ -169,7 +170,7 @@ export default function WalletAuthPage() {
         const errorData = await res.json();
         setErrorMessage(errorData.error || 'Failed to submit community request. Please try again.');
       }
-    } catch (err) {
+    } catch {
       setErrorMessage('Network error during community request.');
     }
   };
@@ -213,7 +214,7 @@ export default function WalletAuthPage() {
     localStorage.removeItem('agartha-signed-out');
     try {
       await connect('lace');
-    } catch (error) {
+    } catch {
       setErrorMessage("Connection failed. Is Lace installed and unlocked?");
     }
   };
@@ -227,10 +228,13 @@ export default function WalletAuthPage() {
       <div className="min-h-screen lg:h-screen w-full grid grid-cols-1 lg:grid-cols-2 p-3 sm:p-6 gap-3 sm:gap-6 bg-white text-[#0A0A0A] font-sans lg:overflow-hidden">
 
         <aside className="relative flex flex-col justify-between p-4 sm:p-[18px] lg:p-6 rounded-[16px] lg:rounded-[24px] bg-[#F4F4F2] overflow-hidden min-h-[220px] max-h-[36vh] lg:max-h-none lg:min-h-0">
-          <img
+          <Image
             className="absolute inset-0 w-full h-full object-cover z-0"
             src="https://pub.hyperagent.com/api/published/pbf01KR6J230J_VVEMNMX509EY6PSF/registration_hero.jpg"
             alt="River landscape"
+            fill
+            sizes="(min-width: 1024px) 50vw, 100vw"
+            priority
           />
 
           <div className="relative z-10 flex items-center gap-2 self-start flex-wrap">
@@ -624,10 +628,12 @@ export default function WalletAuthPage() {
               >
                 <div className="absolute left-0 top-2 bottom-2 w-[3px] rounded-sm bg-blue-600 opacity-0 -translate-x-[3px] transition-all duration-150 ease-in group-hover:opacity-100 group-hover:translate-x-0" />
 
-                <img
+                <Image
                   src="https://cardano.org/img/app-icons/lace.jpg"
                   alt="Lace wallet logo"
                   className="w-9 h-9 rounded-lg object-cover shrink-0 bg-gradient-to-br from-[#FF8A4C] via-[#E73C7E] to-[#4F8DFF]"
+                  width={36}
+                  height={36}
                   onError={(e) => {
                     e.currentTarget.style.background = 'linear-gradient(135deg, #FF8A4C 0%, #E73C7E 50%, #4F8DFF 100%)';
                     e.currentTarget.src = '';
@@ -648,16 +654,21 @@ export default function WalletAuthPage() {
 
             <div className="flex justify-center">
               <div className="relative w-[200px] h-[200px] p-3 bg-white rounded-2xl border border-[#EFEFED] shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-                <img
+                <Image
                   src={qrCodeUrl}
                   alt="QR Code"
                   className="w-full h-full block"
+                  width={176}
+                  height={176}
+                  unoptimized
                 />
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[42px] h-[42px] rounded-lg bg-white p-1 shadow-[0_1px_4px_rgba(0,0,0,0.08)] flex items-center justify-center">
-                  <img
+                  <Image
                     src="https://cardano.org/img/app-icons/lace.jpg"
                     alt="Lace"
                     className="w-full h-full object-cover rounded-[5px] bg-gradient-to-br from-[#FF8A4C] via-[#E73C7E] to-[#4F8DFF]"
+                    width={34}
+                    height={34}
                     onError={(e) => e.currentTarget.removeAttribute('src')}
                   />
                 </div>

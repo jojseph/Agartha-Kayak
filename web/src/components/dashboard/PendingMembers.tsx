@@ -23,25 +23,7 @@ export default function PendingMembers() {
           const data = await res.json();
           setCandidates(data.members);
         } else {
-
-          setCandidates([
-            {
-              id: 'MEM-901',
-              fullName: 'Maria Santos',
-              email: 'maria.santos@email.com',
-              barangay: 'Barangay Luz',
-              govId: 'CRN-1992-XXXXX',
-              walletAddress: 'addr_test1vrm7...2p9x'
-            },
-            {
-              id: 'MEM-902',
-              fullName: 'Danilo Cruz',
-              email: 'danilo.cruz@email.com',
-              barangay: 'Barangay Kasambagan',
-              govId: 'SSS-03-XXXXXXX-X',
-              walletAddress: 'addr_test1vpy4...8wql'
-            }
-          ]);
+          setCandidates([]);
         }
       } catch (err) {
         console.error('Failed to parse onboarding ledger entries', err);
@@ -61,7 +43,7 @@ export default function PendingMembers() {
         body: JSON.stringify({ memberId: id, decision: action }),
       });
 
-      if (res.ok || true) {
+      if (res.ok) {
         alert(`Account registration successfully marked as ${action}d.`);
         setCandidates(prev => prev.filter(c => c.id !== id));
       }

@@ -22,7 +22,7 @@ export async function GET(request: Request) {
         }
 
         return NextResponse.json({ loans: data || [] });
-    } catch (err) {
+    } catch {
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

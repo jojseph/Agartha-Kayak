@@ -1,13 +1,10 @@
 "use client";
 
 import React from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Wallet, ShieldCheck, FileText, LayoutDashboard, Users, UsersRound } from 'lucide-react';
 
 export default function HowItWorks() {
-  const router = useRouter();
-
   const features = [
     {
       title: 'Digital Community Vault',

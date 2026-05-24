@@ -57,7 +57,6 @@ async function runOnce() {
       body: '{}',
     });
     const result = await res.json();
-    console.log(new Date().toISOString(), res.status, result);
     writeStatus({
       isRunning: false,
       lastRunFinishedAt: new Date().toISOString(),

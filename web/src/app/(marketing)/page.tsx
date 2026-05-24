@@ -8,7 +8,7 @@ import { useAuth } from "@/providers/AuthProvider";
 
 export default function AgarthaLanding() {
   const router = useRouter();
-  const { status, member } = useAuth();
+  const { status } = useAuth();
 
   return (
 

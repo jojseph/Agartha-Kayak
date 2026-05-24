@@ -1,8 +1,5 @@
 'use client';
 
-const EMPTY_BODY_SHA256 =
-  'e3b0c44298fc1c149afbf4c8996fb924' + '27ae41e4649b934ca495991b7852b855';
-
 export type SigningWallet = {
   getChangeAddress: () => Promise<string>;
   signData: (
@@ -97,26 +94,6 @@ export async function resolveWalletAddress(
   throw new Error(
     `Unrecognized wallet address format: ${addr.slice(0, 16)}…`
   );
-}
-
-function toHex(input: string): string {
-  const bytes = new TextEncoder().encode(input);
-  let hex = '';
-  for (let i = 0; i < bytes.length; i++) {
-    hex += bytes[i].toString(16).padStart(2, '0');
-  }
-  return hex;
-}
-
-async function sha256Hex(body: string): Promise<string> {
-  if (body.length === 0) return EMPTY_BODY_SHA256;
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(body)
-  );
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
 }
 
 export async function walletAuthFetch(

@@ -4,6 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "dev": "npm --prefix web run dev",
+    "build": "npm --prefix web run build",
+    "start": "npm --prefix web run start",
     "test": "echo \"Error: no test specified\" && exit 0",
     "prepare": "husky",
     "commit": "cz"

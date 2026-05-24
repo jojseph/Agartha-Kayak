@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWallet } from '@meshsdk/react';
 import { ShieldCheck, ChevronLeft } from 'lucide-react';
-import { resolveWalletAddress, walletAuthFetch } from '@/lib/walletAuthClient';
+import { walletAuthFetch } from '@/lib/walletAuthClient';
 import { useAuth } from '@/providers/AuthProvider';
 
 export default function AdminPage() {
@@ -85,7 +85,7 @@ export default function AdminPage() {
             } else {
                 alert(`Error: ${data.error}`);
             }
-        } catch (error) {
+        } catch {
             alert('Failed to process the request');
         } finally {
             setDecisionLoading(null);

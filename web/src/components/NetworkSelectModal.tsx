@@ -125,7 +125,6 @@ export default function NetworkSelectModal({ isDark, onConfirm, onClose }: Netwo
   const [step, setStep] = useState<Step>('network');
   const [selection, setSelection] = useState<Partial<Selection>>({ blockchain: 'Cardano' });
 
-  const totalSteps = step === 'confirm' ? 3 : step === 'network' ? 3 : 3;
   const currentStep = step === 'network' ? 1 : step === 'cardano_testnet' ? 2 : step === 'confirm' ? 3 : 2;
 
   const handleNetworkChoice = (env: 'Mainnet' | 'testnet') => {

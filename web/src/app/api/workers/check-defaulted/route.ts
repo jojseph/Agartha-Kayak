@@ -23,7 +23,6 @@ export async function POST(request: Request) {
     const now = new Date();
     const thresholdDate = new Date(now.getTime() - DEFAULT_GRACE_DAYS * MS_PER_DAY);
     const thresholdIso = thresholdDate.toISOString();
-    const nowIso = now.toISOString();
 
     const { data: loans, error } = await supabaseAdmin
       .from('loans')

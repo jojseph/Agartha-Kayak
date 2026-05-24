@@ -24,27 +24,7 @@ export default function LoanProposals() {
           const data = await res.json();
           setProposals(data.proposals);
         } else {
-
-          setProposals([
-            {
-              id: 'PROP-042',
-              applicant: 'Juan Dela Cruz',
-              amount: 1200,
-              collateral: 'UTXO_77a1bc...b203_0',
-              votesReceived: 1,
-              votesRequired: 3,
-              status: 'Pending'
-            },
-            {
-              id: 'PROP-043',
-              applicant: 'Salamat Co-op Unit B',
-              amount: 5000,
-              collateral: 'ASSET_POLICY_NFTOKEN_889',
-              votesReceived: 2,
-              votesRequired: 3,
-              status: 'Pending'
-            }
-          ]);
+          setProposals([]);
         }
       } catch (err) {
         console.error('Failed to parse treasury consensus states', err);
@@ -65,7 +45,7 @@ export default function LoanProposals() {
         body: JSON.stringify({ proposalId: id }),
       });
 
-      if (res.ok || true) {
+      if (res.ok) {
         alert('Multi-sig vote broadcasted to network successfully.');
         setProposals(prev =>
           prev.map(p => {

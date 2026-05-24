@@ -245,12 +245,8 @@ export async function GET(request: Request) {
                     .in('status', ['approved', 'active', 'overdue'])
                     .neq('borrower_address', address);
 
-                const communityTreasuryLoansFiltered = (communityTreasuryLoans || []).filter((loan: any) => {
-
-                    return true;
-                });
-
-                const manageLoanIds = communityTreasuryLoansFiltered.map((l: any) => l.loan_id);
+                const manageableTreasuryLoans = communityTreasuryLoans || [];
+                const manageLoanIds = manageableTreasuryLoans.map((l: any) => l.loan_id);
                 const manageRepaymentMap: Record<string, number> = {};
                 if (manageLoanIds.length > 0) {
                     const { data: mgmtRepayments } = await supabaseAdmin
@@ -263,7 +259,7 @@ export async function GET(request: Request) {
                     });
                 }
 
-                communityTreasuryLoansFiltered.forEach((loan: any) => {
+                manageableTreasuryLoans.forEach((loan: any) => {
                     const totalRepaid = manageRepaymentMap[loan.loan_id] || 0;
                     const remainingBalance = Math.max(0, Number(loan.amount) - totalRepaid);
                     const borrowerAlias = (loan.borrower as any)?.alias || loan.borrower_address?.slice(0, 12) + '…';

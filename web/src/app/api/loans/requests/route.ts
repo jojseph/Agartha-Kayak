@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 export async function GET(request: Request) {
-    const authHeader = request.headers.get('Authorization');
-
     try {
         const url = new URL(request.url);
         const address = url.searchParams.get('address');
@@ -28,7 +26,7 @@ export async function GET(request: Request) {
         }
 
         return NextResponse.json({ requests: data || [] });
-    } catch (err) {
+    } catch {
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }

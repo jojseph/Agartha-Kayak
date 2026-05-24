@@ -1,12 +1,10 @@
 "use client";
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Wallet, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function FAQ() {
-  const router = useRouter();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   const faqs = [

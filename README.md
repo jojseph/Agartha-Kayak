@@ -121,11 +121,18 @@ Create `web/.env.local` from `web/.env.example`, then fill in the required value
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+NEXT_PUBLIC_API_URL=http://localhost:3000/api
+NEXT_PUBLIC_BLOCKFROST_PROJECT_ID=your-preprod-blockfrost-project-id
+NEXT_PUBLIC_CARDANO_SUBMITTER_ADDRESS=addr_test1...
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+API_KAYAK_KEY=your-server-api-key
 BLOCKFROST_PROJECT_ID=your-preprod-blockfrost-project-id
 CARDANO_SUBMITTER_SKEY=your-preprod-signing-key
 CARDANO_SUBMITTER_ADDRESS=addr_test1...
 WORKER_TRIGGER_SECRET=your-worker-secret
+WORKER_BASE_URL=http://localhost:3000
+WORKER_STATUS_FILE=.worker-status.json
 ```
 
 The live Supabase project is the database source of truth. Schema inspection and updates are handled through Supabase and the configured MCP server.
@@ -153,6 +160,14 @@ cd web
 npm run dev:worker
 ```
 
+Run the production build locally with the Next.js server and worker together:
+
+```bash
+cd web
+npm run build
+npm start
+```
+
 The application runs at:
 
 ```text
@@ -169,7 +184,9 @@ From `web/`:
 | `npm run dev:next` | Start only the Next.js development server |
 | `npm run dev:worker` | Start only the local Cardano sync worker |
 | `npm run build` | Create a production build |
-| `npm run start` | Start the production server |
+| `npm run start` | Start the production Next.js server and local worker |
+| `npm run start:next` | Start only the production Next.js server |
+| `npm run start:worker` | Start only the local Cardano sync worker |
 | `npm run lint` | Run Next.js lint checks |
 | `npm run test` | Run the Vitest suite |
 | `npm run test:watch` | Run Vitest in watch mode |
@@ -178,6 +195,9 @@ From the repository root:
 
 | Command | Description |
 | --- | --- |
+| `npm run dev` | Start the web app and worker from `web/` |
+| `npm run build` | Create the web production build from `web/` |
+| `npm start` | Start the web production server and worker from `web/` |
 | `npm run commit` | Create a conventional commit with Commitizen |
 
 ## Main Routes
